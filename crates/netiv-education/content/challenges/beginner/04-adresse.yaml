@@ -1,0 +1,18 @@
+id: beginner-04
+title: PC1 a changé de réseau
+topic: addressing
+difficulty: easy
+description: |
+  PC1 ne joint plus rien, pas même son routeur. Vérifie son adressage.
+time_limit_minutes: 15
+topology_ref: office
+objective: { from: PC1, to: 192.168.2.10 }
+faults:
+  - set_ip: { iface: "PC1:eth0", ip: 10.99.0.10/24 }
+solution:
+  cause: wrong-ip
+  device: PC1
+  explanation: |
+    PC1 a reçu l'adresse 10.99.0.10/24 : elle n'est plus dans le même réseau que
+    sa passerelle 192.168.1.1. L'adresse correcte est 192.168.1.10/24.
+  commands: ["ip PC1 eth0 192.168.1.10/24"]

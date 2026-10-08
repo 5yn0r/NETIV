@@ -1,0 +1,19 @@
+id: advanced-01
+title: La réponse ne revient pas
+topic: routing
+difficulty: hard
+description: |
+  PC1 envoie ses paquets : le serveur les reçoit bel et bien. Pourtant PC1 ne
+  reçoit jamais de réponse. Pense au trajet de retour.
+time_limit_minutes: 25
+topology_ref: triangle
+objective: { from: PC1, to: 10.3.0.10 }
+faults:
+  - remove_routes: { device: R3, dest: 10.1.0.0/24 }
+solution:
+  cause: missing-route
+  device: R3
+  explanation: |
+    La requête arrive (la route aller est bonne) mais R3 ne sait plus renvoyer la
+    réponse vers 10.1.0.0/24. Un routage doit exister dans les deux sens.
+  commands: ["route add R3 10.1.0.0/24 via 10.23.0.1"]

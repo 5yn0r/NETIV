@@ -1,0 +1,29 @@
+[package]
+name = "netiv-api"
+description = "API HTTP locale et interface web de NETIV"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+netiv-core = { workspace = true }
+netiv-topology = { workspace = true }
+netiv-diagnostics = { workspace = true }
+netiv-security = { workspace = true }
+netiv-analysis = { workspace = true }
+netiv-education = { workspace = true }
+netiv-chaos = { workspace = true }
+netiv-cli = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
+http-body-util = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

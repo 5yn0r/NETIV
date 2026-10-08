@@ -1,0 +1,33 @@
+id: range-03
+title: La balise discrète
+difficulty: hard
+description: |
+  ALERTE — Le trafic sortant de la DMZ vers Internet est monté en flèche, mais aucun
+  pic : un petit paquet à intervalle régulier. Une DMZ n'a normalement aucune raison
+  d'appeler Internet. Identifie la machine, caractérise son comportement, puis
+  interdis la sortie sans gêner la navigation des postes ni la publication du site.
+time_limit_minutes: 30
+topology_ref: cyber
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: allow, src: 10.9.0.0/24, dst: 203.0.113.0/24, in: eth1, comment: "mises à jour DMZ" }
+traffic:
+  - { at_s: 3, from: WEB02, to: 203.0.113.10, proto: tcp, ports: [4444], repeat: 7, every_ms: 3000 }
+culprit:
+  device: WEB02
+  behavior: beaconing
+must_block:
+  - { from: WEB02, to: 203.0.113.10, service: { proto: tcp, port: 4444 } }
+  - { from: WEB01, to: 203.0.113.10, service: { proto: tcp, port: 80 } }
+must_work:
+  - { from: PC01, to: 203.0.113.10, service: { proto: tcp, port: 80 } }
+  - { from: INET, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
+  - { from: PC02, to: 10.9.0.11, service: { proto: tcp, port: 80 } }
+solution:
+  explanation: |
+    WEB02 contacte 203.0.113.10:4444 toutes les 3 secondes pendant 18 secondes : c'est
+    une balise (canal de commande). La règle « mises à jour DMZ » autorise toute sortie
+    de la DMZ vers Internet. La retirer rend sa politique stricte : les réponses aux
+    visiteurs passent encore grâce au suivi de connexion.
+  commands: ["acl del FW1 1"]

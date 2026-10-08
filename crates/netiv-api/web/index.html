@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NETIV — laboratoire réseau</title>
+  <meta name="description" content="Laboratoire réseau interactif : construire, observer, casser, diagnostiquer, sécuriser.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#stage">Aller au contenu</a>
+
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="var(--accent)"></rect>
+        <path d="M8 24V8l16 16V8" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        <circle cx="8" cy="8" r="2.4" fill="#fff"></circle><circle cx="24" cy="24" r="2.4" fill="#fff"></circle>
+      </svg>
+      <strong>NETIV</strong>
+      <span class="tag">Build. Break. Understand. Secure.</span>
+    </div>
+    <div class="top-actions">
+      <button id="profile-chip" class="chip" type="button" aria-haspopup="dialog" title="Progression"></button>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Changer de thème" title="Changer de thème">◐</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" role="status" hidden></div>
+
+  <main class="layout">
+    <aside class="side" aria-label="Labs">
+      <section class="card">
+        <h2>Labs ouverts</h2>
+        <ul id="open-labs" class="lab-list"></ul>
+        <p id="no-labs" class="muted">Aucun lab ouvert. Choisis un réseau, un défi ou un scénario ci-dessous.</p>
+      </section>
+
+      <section class="card">
+        <div class="seg" role="tablist" aria-label="Catalogue">
+          <button role="tab" data-lib="networks" aria-selected="true">Réseaux</button>
+          <button role="tab" data-lib="challenges" aria-selected="false">Défis</button>
+          <button role="tab" data-lib="ranges" aria-selected="false">Cyber range</button>
+          <button role="tab" data-lib="generate" aria-selected="false">Générer</button>
+        </div>
+        <div id="library" class="library"></div>
+      </section>
+    </aside>
+
+    <section id="stage" class="stage" aria-label="Réseau">
+      <div class="stage-head">
+        <h1 id="lab-title">Aucun réseau</h1>
+        <span id="lab-meta" class="muted"></span>
+      </div>
+
+      <div class="toolbar" role="group" aria-label="Actions">
+        <label>Depuis <select id="tb-src" aria-label="Machine source"></select></label>
+        <label>vers <select id="tb-dst" aria-label="Machine destination"></select></label>
+        <label class="narrow">port <input id="tb-port" type="number" min="1" max="65535" placeholder="80" aria-label="Port (vide : ping)"></label>
+        <label class="check"><input id="tb-stepmode" type="checkbox"> pas à pas</label>
+        <button id="tb-go" class="primary" type="button">Envoyer</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button id="tb-step" type="button" title="Exécuter un seul événement">Pas à pas</button>
+        <button id="tb-run" type="button" title="Exécuter tous les événements en attente">Tout exécuter</button>
+      </div>
+
+      <div class="canvas-wrap">
+        <svg id="canvas" role="img" aria-label="Schéma du réseau" tabindex="0"></svg>
+        <div id="canvas-empty" class="empty">
+          <p><strong>Choisis un lab</strong> dans le catalogue pour voir son schéma.</p>
+        </div>
+        <ul class="legend" aria-label="Légende">
+          <li><i class="dot ok"></i> en service</li>
+          <li><i class="dot bad"></i> coupé / éteint</li>
+          <li><i class="dot pkt"></i> paquet</li>
+        </ul>
+      </div>
+
+      <section class="console" aria-label="Console">
+        <div id="console-out" class="console-out" role="log" aria-live="polite"></div>
+        <form id="console-form" class="console-form" autocomplete="off">
+          <span class="prompt" aria-hidden="true">netiv&gt;</span>
+          <input id="console-in" type="text" spellcheck="false" aria-label="Commande NETIV" placeholder="ping PC1 192.168.2.10   (tape « help »)">
+        </form>
+      </section>
+    </section>
+
+    <section class="panel" aria-label="Détails">
+      <div class="tabs" role="tablist" aria-label="Panneaux">
+        <button role="tab" data-tab="device" aria-selected="true">Appareil</button>
+        <button role="tab" data-tab="journey" aria-selected="false">Parcours</button>
+        <button role="tab" data-tab="trace" aria-selected="false">Trace</button>
+        <button role="tab" data-tab="analysis" aria-selected="false">Analyse</button>
+        <button role="tab" data-tab="challenge" aria-selected="false">Défi</button>
+      </div>
+      <div id="tab-device" class="tab-body" role="tabpanel"></div>
+      <div id="tab-journey" class="tab-body" role="tabpanel" hidden></div>
+      <div id="tab-trace" class="tab-body" role="tabpanel" hidden></div>
+      <div id="tab-analysis" class="tab-body" role="tabpanel" hidden></div>
+      <div id="tab-challenge" class="tab-body" role="tabpanel" hidden></div>
+    </section>
+  </main>
+
+  <dialog id="profile-dialog" aria-labelledby="profile-title">
+    <form method="dialog">
+      <h2 id="profile-title">Progression</h2>
+      <pre id="profile-text"></pre>
+      <h3>Classement local</h3>
+      <pre id="board-text"></pre>
+      <button class="primary" value="close">Fermer</button>
+    </form>
+  </dialog>
+</body>
+</html>

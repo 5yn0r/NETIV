@@ -1,0 +1,77 @@
+format_version: 1
+metadata:
+  title: 'Bureau : deux routeurs et un serveur web'
+  author: NETIV
+topology:
+  network:
+    name: office
+    seed: 11
+  devices:
+  - name: PC1
+    type: host
+    interfaces:
+    - name: eth0
+      ip: 192.168.1.10/24
+    gateway: 192.168.1.1
+  - name: PC2
+    type: host
+    interfaces:
+    - name: eth0
+      ip: 192.168.1.11/24
+    gateway: 192.168.1.1
+  - name: SW1
+    type: switch
+    interfaces:
+    - name: port1
+    - name: port2
+    - name: port3
+    - name: port4
+  - name: R1
+    type: router
+    interfaces:
+    - name: eth0
+      ip: 192.168.1.1/24
+    - name: eth1
+      ip: 10.0.0.1/30
+    routes:
+    - dest: 192.168.2.0/24
+      via: 10.0.0.2
+  - name: R2
+    type: router
+    interfaces:
+    - name: eth0
+      ip: 10.0.0.2/30
+    - name: eth1
+      ip: 192.168.2.1/24
+    routes:
+    - dest: 192.168.1.0/24
+      via: 10.0.0.1
+  - name: SERVER
+    type: server
+    interfaces:
+    - name: eth0
+      ip: 192.168.2.10/24
+    gateway: 192.168.2.1
+    services:
+    - proto: tcp
+      port: 80
+      name: http
+    - proto: tcp
+      port: 22
+      name: ssh
+  links:
+  - a: PC1:eth0
+    b: SW1:port1
+    latency_us: 1000
+  - a: PC2:eth0
+    b: SW1:port2
+    latency_us: 1000
+  - a: SW1:port3
+    b: R1:eth0
+    latency_us: 1000
+  - a: R1:eth1
+    b: R2:eth0
+    latency_us: 1000
+  - a: R2:eth1
+    b: SERVER:eth0
+    latency_us: 1000

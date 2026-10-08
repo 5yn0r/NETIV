@@ -1,0 +1,19 @@
+[package]
+name = "netiv-chaos"
+description = "Chaos Engine : catalogue de pannes et injection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+netiv-core = { workspace = true }
+netiv-diagnostics = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+netiv-topology = { workspace = true }
+
+[lints]
+workspace = true

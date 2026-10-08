@@ -1,0 +1,52 @@
+# Campus : deux VLAN (10 = postes, 20 = serveurs) sur deux switches reliés par
+# un trunk, routés par R1 (une interface par VLAN).
+#
+#   PC1 (v10) ─ SW1 ══trunk══ SW2 ─ PC3 (v10)
+#   PC2 (v20) ─┘               │  ├─ SRV (v20, http)
+#                              └─ R1 (eth0 v10, eth1 v20)
+network: { name: campus, seed: 21 }
+devices:
+  - name: PC1
+    type: host
+    interfaces: [{ name: eth0, ip: 10.10.0.11/24 }]
+    gateway: 10.10.0.1
+  - name: PC2
+    type: host
+    interfaces: [{ name: eth0, ip: 10.20.0.12/24 }]
+    gateway: 10.20.0.1
+  - name: PC3
+    type: host
+    interfaces: [{ name: eth0, ip: 10.10.0.13/24 }]
+    gateway: 10.10.0.1
+  - name: SRV
+    type: server
+    interfaces: [{ name: eth0, ip: 10.20.0.20/24 }]
+    gateway: 10.20.0.1
+    services: [{ proto: tcp, port: 80, name: http }]
+  - name: SW1
+    type: switch
+    interfaces:
+      - { name: p1, vlan: 10 }
+      - { name: p2, vlan: 20 }
+      - { name: tr, trunk: [10, 20], native_vlan: 1 }
+  - name: SW2
+    type: switch
+    interfaces:
+      - { name: tr, trunk: [10, 20], native_vlan: 1 }
+      - { name: p1, vlan: 10 }
+      - { name: p2, vlan: 20 }
+      - { name: r10, vlan: 10 }
+      - { name: r20, vlan: 20 }
+  - name: R1
+    type: router
+    interfaces:
+      - { name: eth0, ip: 10.10.0.1/24 }
+      - { name: eth1, ip: 10.20.0.1/24 }
+links:
+  - { a: "PC1:eth0", b: "SW1:p1" }
+  - { a: "PC2:eth0", b: "SW1:p2" }
+  - { a: "SW1:tr", b: "SW2:tr" }
+  - { a: "PC3:eth0", b: "SW2:p1" }
+  - { a: "SRV:eth0", b: "SW2:p2" }
+  - { a: "R1:eth0", b: "SW2:r10" }
+  - { a: "R1:eth1", b: "SW2:r20" }

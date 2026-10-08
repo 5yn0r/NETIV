@@ -1,0 +1,20 @@
+id: intermediate-01
+title: Un masque trop généreux
+topic: addressing
+difficulty: medium
+description: |
+  PC1 n'atteint plus le serveur. Sa passerelle est correcte, son adresse aussi…
+  en apparence. Observe comment PC1 décide si une destination est locale.
+time_limit_minutes: 20
+topology_ref: office
+objective: { from: PC1, to: 192.168.2.10 }
+faults:
+  - set_ip: { iface: "PC1:eth0", ip: 192.168.1.10/16 }
+solution:
+  cause: wrong-mask
+  device: PC1
+  explanation: |
+    Avec un masque /16, 192.168.2.10 appartient au réseau 192.168.0.0/16 : PC1 la
+    croit locale, fait de l'ARP au lieu de passer par sa passerelle, et personne
+    ne répond. Le bon masque est /24.
+  commands: ["ip PC1 eth0 192.168.1.10/24"]

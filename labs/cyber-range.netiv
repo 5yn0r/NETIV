@@ -1,0 +1,149 @@
+format_version: 1
+metadata:
+  title: 'Cyber range : Internet, pare-feu, DMZ, LAN'
+  author: NETIV
+topology:
+  network:
+    name: cyber
+    seed: 61
+  devices:
+  - name: INET
+    type: host
+    role: internet
+    interfaces:
+    - name: eth0
+      ip: 203.0.113.10/24
+    gateway: 203.0.113.1
+    services:
+    - proto: tcp
+      port: 80
+      name: http
+    - proto: tcp
+      port: 4444
+      name: c2
+    - proto: udp
+      port: 53
+      name: dns
+  - name: FW1
+    type: firewall
+    interfaces:
+    - name: eth0
+      ip: 203.0.113.1/24
+    - name: eth1
+      ip: 10.9.0.1/24
+    - name: eth2
+      ip: 192.168.10.1/24
+    - name: eth3
+      ip: 192.168.20.1/24
+    acl:
+      rules:
+      - action: allow
+        proto: tcp
+        dst: 10.9.0.0/24
+        port: '80'
+        in: eth0
+        comment: Internet vers web DMZ
+      - action: allow
+        proto: tcp
+        dst: 10.9.0.0/24
+        port: '80'
+        in: eth2
+        comment: LAN vers web DMZ
+      - action: allow
+        dst: 203.0.113.0/24
+        in: eth2
+        comment: LAN vers Internet
+      - action: allow
+        proto: tcp
+        dst: 192.168.20.0/24
+        port: '445'
+        in: eth2
+        comment: LAN vers partage de fichiers
+      - action: allow
+        proto: icmp
+        in: eth2
+        comment: ping depuis le LAN
+  - name: SWD
+    type: switch
+    interfaces:
+    - name: port1
+    - name: port2
+    - name: port3
+  - name: SWL
+    type: switch
+    interfaces:
+    - name: port1
+    - name: port2
+    - name: port3
+  - name: WEB01
+    type: server
+    role: dmz
+    interfaces:
+    - name: eth0
+      ip: 10.9.0.10/24
+    gateway: 10.9.0.1
+    services:
+    - proto: tcp
+      port: 80
+      name: http
+  - name: WEB02
+    type: server
+    role: dmz
+    interfaces:
+    - name: eth0
+      ip: 10.9.0.11/24
+    gateway: 10.9.0.1
+    services:
+    - proto: tcp
+      port: 80
+      name: http
+  - name: PC01
+    type: host
+    interfaces:
+    - name: eth0
+      ip: 192.168.10.11/24
+    gateway: 192.168.10.1
+  - name: PC02
+    type: host
+    interfaces:
+    - name: eth0
+      ip: 192.168.10.12/24
+    gateway: 192.168.10.1
+  - name: FILE01
+    type: server
+    interfaces:
+    - name: eth0
+      ip: 192.168.20.20/24
+    gateway: 192.168.20.1
+    services:
+    - proto: tcp
+      port: 445
+      name: smb
+    - proto: tcp
+      port: 22
+      name: ssh
+  links:
+  - a: INET:eth0
+    b: FW1:eth0
+    latency_us: 1000
+  - a: FW1:eth1
+    b: SWD:port1
+    latency_us: 1000
+  - a: WEB01:eth0
+    b: SWD:port2
+    latency_us: 1000
+  - a: WEB02:eth0
+    b: SWD:port3
+    latency_us: 1000
+  - a: FW1:eth2
+    b: SWL:port1
+    latency_us: 1000
+  - a: PC01:eth0
+    b: SWL:port2
+    latency_us: 1000
+  - a: PC02:eth0
+    b: SWL:port3
+    latency_us: 1000
+  - a: FW1:eth3
+    b: FILE01:eth0
+    latency_us: 1000

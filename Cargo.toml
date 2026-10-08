@@ -1,0 +1,50 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/netiv-core",
+    "crates/netiv-topology",
+    "crates/netiv-diagnostics",
+    "crates/netiv-chaos",
+    "crates/netiv-security",
+    "crates/netiv-analysis",
+    "crates/netiv-api",
+    "crates/netiv-bin",
+    "crates/netiv-education",
+    "crates/netiv-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = ""
+authors = ["NETIV contributors"]
+
+[workspace.dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "0.10"
+clap = { version = "4", features = ["derive"] }
+netiv-core = { path = "crates/netiv-core" }
+netiv-topology = { path = "crates/netiv-topology" }
+netiv-diagnostics = { path = "crates/netiv-diagnostics" }
+netiv-chaos = { path = "crates/netiv-chaos" }
+netiv-security = { path = "crates/netiv-security" }
+netiv-analysis = { path = "crates/netiv-analysis" }
+netiv-education = { path = "crates/netiv-education" }
+tempfile = "3"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+netiv-cli = { path = "crates/netiv-cli" }
+netiv-api = { path = "crates/netiv-api" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"

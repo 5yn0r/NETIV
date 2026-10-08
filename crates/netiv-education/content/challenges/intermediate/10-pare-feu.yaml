@@ -1,0 +1,25 @@
+id: intermediate-05
+title: Le pare-feu trop zélé
+topic: security
+difficulty: medium
+description: |
+  Depuis ce matin, le site web de la DMZ (10.9.0.10, port 80) est inaccessible
+  depuis le LAN. Le serveur fonctionne. Que s'est-il passé sur le chemin ?
+time_limit_minutes: 20
+topology_ref: dmz
+objective:
+  from: PC1
+  to: 10.9.0.10
+  service: { proto: tcp, port: 80 }
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: deny, proto: tcp, port: "80", in: eth0, comment: "ajouté par erreur" }
+solution:
+  cause: filtered
+  device: FW1
+  explanation: |
+    Une règle « deny tcp port 80 » a été insérée en tête de liste sur FW1 : elle
+    passe avant la règle qui autorisait le web. La première règle qui correspond
+    gagne ; il faut supprimer la règle fautive.
+  commands: ["acl del FW1 1"]

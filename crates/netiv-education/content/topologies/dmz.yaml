@@ -1,0 +1,52 @@
+# NETIV — un réseau avec pare-feu, DMZ et VLAN
+#
+#   PC1 ── SW1 ──┐
+#   PC2 ──┘      FW1 ── SRV (DMZ)
+#
+# Essayer :   netiv run examples/dmz.yaml
+#   netiv> curl PC1 10.9.0.10 80      # autorisé par la règle 1
+#   netiv> curl PC1 10.9.0.10 22      # bloqué : timeout (essayer « trace »)
+#   netiv> curl SRV 192.168.1.10 22   # la DMZ ne peut pas initier vers le LAN
+network:
+  name: dmz
+  seed: 7
+
+devices:
+  - name: PC1
+    type: host
+    interfaces: [{ name: eth0, ip: 192.168.1.10/24 }]
+    gateway: 192.168.1.1
+    services:
+      - { proto: tcp, port: 22, name: ssh }
+  - name: PC2
+    type: host
+    interfaces: [{ name: eth0, ip: 192.168.1.11/24 }]
+    gateway: 192.168.1.1
+  - name: SW1
+    type: switch
+    interfaces:
+      - { name: p1, vlan: 10 }
+      - { name: p2, vlan: 10 }
+      - { name: p3, vlan: 10 }
+  - name: FW1
+    type: firewall
+    interfaces:
+      - { name: eth0, ip: 192.168.1.1/24 }
+      - { name: eth1, ip: 10.9.0.1/24 }
+    acl:
+      rules:
+        - { action: allow, proto: tcp, dst: 10.9.0.0/24, port: "80", in: eth0, comment: "LAN vers web DMZ" }
+        - { action: allow, proto: icmp, in: eth0, comment: "ping depuis le LAN" }
+  - name: SRV
+    type: server
+    interfaces: [{ name: eth0, ip: 10.9.0.10/24 }]
+    gateway: 10.9.0.1
+    services:
+      - { proto: tcp, port: 80, name: http }
+      - { proto: tcp, port: 22, name: ssh }
+
+links:
+  - { a: "PC1:eth0", b: "SW1:p1" }
+  - { a: "PC2:eth0", b: "SW1:p2" }
+  - { a: "SW1:p3", b: "FW1:eth0" }
+  - { a: "FW1:eth1", b: "SRV:eth0" }

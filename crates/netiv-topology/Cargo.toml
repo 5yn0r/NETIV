@@ -1,0 +1,18 @@
+[package]
+name = "netiv-topology"
+description = "Description, validation et chargement de topologies NETIV (YAML)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+netiv-core = { workspace = true }
+serde = { workspace = true }
+serde_yaml_ng = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

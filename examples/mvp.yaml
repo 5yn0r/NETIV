@@ -1,0 +1,49 @@
+# NETIV v0.1 — le réseau du MVP
+#
+#   PC1 ── SW1 ── R1 ── R2 ── SERVER
+#
+# Essayer :   netiv run examples/mvp.yaml
+#   netiv> ping PC1 192.168.2.10 2
+#   netiv> trace 1
+network:
+  name: mvp
+  seed: 42
+
+devices:
+  - name: PC1
+    type: host
+    interfaces:
+      - { name: eth0, ip: 192.168.1.10/24 }
+    gateway: 192.168.1.1
+
+  - name: SW1
+    type: switch
+    ports: 4
+
+  - name: R1
+    type: router
+    interfaces:
+      - { name: eth0, ip: 192.168.1.1/24 }
+      - { name: eth1, ip: 10.0.0.1/30 }
+    routes:
+      - { dest: 192.168.2.0/24, via: 10.0.0.2 }
+
+  - name: R2
+    type: router
+    interfaces:
+      - { name: eth0, ip: 10.0.0.2/30 }
+      - { name: eth1, ip: 192.168.2.1/24 }
+    routes:
+      - { dest: 192.168.1.0/24, via: 10.0.0.1 }
+
+  - name: SERVER
+    type: server
+    interfaces:
+      - { name: eth0, ip: 192.168.2.10/24 }
+    gateway: 192.168.2.1
+
+links:
+  - { a: "PC1:eth0", b: "SW1:port1" }
+  - { a: "SW1:port2", b: "R1:eth0" }
+  - { a: "R1:eth1", b: "R2:eth0" }
+  - { a: "R2:eth1", b: "SERVER:eth0" }

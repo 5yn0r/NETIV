@@ -1,0 +1,21 @@
+id: advanced-03
+title: La mauvaise adresse physique
+topic: switching
+difficulty: hard
+description: |
+  PC1 envoie ses trames à sa passerelle, qui est bien allumée et bien configurée.
+  Mais elles ne lui parviennent jamais. Comment PC1 sait-il à quelle adresse MAC
+  les adresser ?
+time_limit_minutes: 25
+topology_ref: office
+objective: { from: PC1, to: 192.168.2.10 }
+faults:
+  - static_arp: { device: PC1, ip: 192.168.1.1, mac: "02:00:00:00:ba:d0" }
+solution:
+  cause: arp-mismatch
+  device: PC1
+  explanation: |
+    PC1 a une entrée ARP statique qui associe 192.168.1.1 à une MAC qui n'est pas
+    celle de R1. Les trames partent vers une adresse que personne ne possède. On la
+    voit dans « show arp PC1 », comparée à « show ifaces R1 ».
+  commands: ["arp PC1 del 192.168.1.1"]

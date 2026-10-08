@@ -1,0 +1,24 @@
+[package]
+name = "netiv-bin"
+description = "Commande `netiv` : CLI interactive, générateurs et serveur web local"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "netiv"
+path = "src/main.rs"
+
+[dependencies]
+netiv-cli = { workspace = true }
+netiv-core = { workspace = true }
+netiv-topology = { workspace = true }
+netiv-analysis = { workspace = true }
+netiv-api = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+serde_yaml_ng = { workspace = true }
+
+[lints]
+workspace = true

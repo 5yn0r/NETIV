@@ -1,0 +1,28 @@
+[package]
+name = "netiv-cli"
+description = "Interface en ligne de commande de NETIV"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "netiv_cli"
+path = "src/lib.rs"
+
+[dependencies]
+netiv-core = { workspace = true }
+netiv-topology = { workspace = true }
+netiv-diagnostics = { workspace = true }
+netiv-chaos = { workspace = true }
+netiv-education = { workspace = true }
+netiv-security = { workspace = true }
+serde_yaml_ng = { workspace = true }
+netiv-analysis = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

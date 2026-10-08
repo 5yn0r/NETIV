@@ -1,0 +1,21 @@
+id: advanced-04
+title: Le ping est interdit
+topic: security
+difficulty: hard
+description: |
+  Depuis le LAN, plus moyen de pinguer le serveur de la DMZ (10.9.0.10), qui
+  fonctionne pourtant. Qui décide de ce qui traverse le pare-feu ?
+time_limit_minutes: 25
+topology_ref: dmz
+objective: { from: PC1, to: 10.9.0.10 }
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: deny, proto: icmp, comment: "ICMP interdit" }
+solution:
+  cause: filtered
+  device: FW1
+  explanation: |
+    Une règle « deny icmp » placée en tête de la liste de FW1 bloque les requêtes
+    d'écho. Elle masque la règle suivante qui autorisait le ping depuis le LAN.
+  commands: ["acl del FW1 1"]

@@ -1,0 +1,17 @@
+[package]
+name = "netiv-diagnostics"
+description = "Sondes, diagnostic de pannes (cause racine), indices"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+netiv-core = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+netiv-topology = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,19 @@
+id: intermediate-03
+title: Le routeur qui ne routait plus
+topic: routing
+difficulty: medium
+description: |
+  Le paquet arrive jusqu'à un routeur… puis plus rien, sans message d'erreur.
+  Qu'est-ce qui fait qu'un routeur se comporte comme un simple hôte ?
+time_limit_minutes: 20
+topology_ref: triangle
+objective: { from: PC1, to: 10.3.0.10 }
+faults:
+  - forwarding_off: { device: R2 }
+solution:
+  cause: forwarding-disabled
+  device: R2
+  explanation: |
+    Le transfert de paquets (ip forwarding) est désactivé sur R2 : il reçoit le
+    paquet destiné à un autre réseau et l'abandonne « pas pour nous ».
+  commands: ["forwarding R2 on"]

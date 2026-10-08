@@ -1,0 +1,39 @@
+id: range-01
+title: Le balayage venu de la DMZ
+difficulty: medium
+description: |
+  ALERTE — Cette nuit, le pare-feu a remonté un volume anormal de connexions sur
+  le réseau des serveurs. Le serveur de fichiers FILE01 semble visé.
+
+  Mène l'enquête : qui est à l'origine du trafic, que fait-il exactement, et
+  pourquoi le pare-feu l'a-t-il laissé passer ? Puis corrige la politique de
+  filtrage SANS couper le trafic légitime (web de la DMZ, partage de fichiers du
+  LAN, sortie Internet des postes).
+time_limit_minutes: 30
+topology_ref: cyber
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: allow, src: 10.9.0.0/24, dst: 192.168.0.0/16, in: eth1, comment: "DMZ vers réseaux internes (temporaire ?)" }
+traffic:
+  - { at_s: 5, from: WEB01, to: 192.168.20.20, proto: tcp, ports: [21, 22, 23, 25, 80, 135, 139, 443, 445, 3389], every_ms: 500 }
+culprit:
+  device: WEB01
+  behavior: port-scan
+must_block:
+  - { from: WEB01, to: 192.168.20.20, service: { proto: tcp, port: 22 } }
+  - { from: WEB01, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+  - { from: WEB01, to: 192.168.10.11 }
+must_work:
+  - { from: PC01, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
+  - { from: INET, to: 10.9.0.11, service: { proto: tcp, port: 80 } }
+  - { from: PC02, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+  - { from: PC01, to: 203.0.113.10, service: { proto: tcp, port: 80 } }
+solution:
+  explanation: |
+    WEB01 (DMZ, probablement compromis) a balayé 10 ports de FILE01 en 5 secondes.
+    Le pare-feu l'a laissé faire à cause d'une règle « allow » de la DMZ vers les
+    réseaux internes, placée en tête de liste. En la supprimant, la politique par
+    défaut (deny) bloque à nouveau la DMZ, tandis que les flux du LAN restent
+    autorisés par leurs propres règles.
+  commands: ["acl del FW1 1"]

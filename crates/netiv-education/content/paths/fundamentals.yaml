@@ -1,0 +1,79 @@
+id: fundamentals
+title: Fondamentaux des réseaux
+description: Du câble au pare-feu, en dix leçons qui s'appuient sur des challenges.
+lessons:
+  - id: ethernet-mac
+    title: Ethernet et adresses MAC
+    text: |
+      Sur un réseau local, les machines s'adressent des *trames* Ethernet. Chaque
+      interface possède une adresse MAC unique, qui identifie le destinataire sur le
+      câble. Un switch apprend où se trouvent les MAC en observant les trames qui
+      passent, puis les transmet uniquement vers le bon port (sinon, il diffuse).
+    try:
+      - "show ifaces PC1"
+      - "ping PC1 192.168.2.10"
+      - "show mac SW1"
+  - id: arp
+    title: ARP, ou comment trouver une adresse MAC
+    text: |
+      Pour parler à 192.168.1.1, une machine connaît l'IP mais pas la MAC. Elle diffuse
+      une requête ARP (« qui a cette IP ? ») et le propriétaire répond. Le résultat est
+      mémorisé dans le cache ARP. Une entrée erronée envoie les trames dans le vide.
+    try:
+      - "ping PC1 192.168.2.10"
+      - "show arp PC1"
+      - "trace 1"
+  - id: ipv4
+    title: Adresses IPv4
+    text: |
+      Une adresse IP a deux rôles : identifier une machine et indiquer son réseau. Deux
+      machines ne peuvent se parler directement que si elles sont dans le même réseau.
+    challenges: [beginner-04]
+  - id: subnetting
+    title: Sous-réseaux et masques
+    text: |
+      Le masque (/24, /16...) indique quelle partie de l'adresse désigne le réseau. Il
+      décide, pour chaque destination : « locale » (on fait de l'ARP) ou « distante »
+      (on passe par la passerelle). Un masque faux transforme l'un en l'autre.
+    challenges: [intermediate-01]
+  - id: gateway
+    title: La passerelle par défaut
+    text: |
+      Pour sortir de son réseau, une machine envoie le paquet à sa passerelle : un
+      routeur de son propre réseau. Si cette adresse ne correspond à personne, aucune
+      communication hors du réseau local n'est possible.
+    challenges: [beginner-01]
+  - id: physical
+    title: La couche physique
+    text: |
+      Avant de soupçonner la configuration, vérifie le plus simple : le câble est-il
+      branché, l'interface activée, le lien fiable ? Beaucoup de pannes se trouvent là.
+    challenges: [beginner-02, beginner-03]
+  - id: routing
+    title: Le routage statique
+    text: |
+      Un routeur choisit, pour chaque paquet, la route au plus long préfixe qui
+      correspond à la destination. Les routes doivent exister dans les deux sens : la
+      réponse doit pouvoir revenir. Une route plus précise l'emporte toujours.
+    challenges: [intermediate-02, intermediate-03]
+  - id: vlan
+    title: Les VLAN
+    text: |
+      Un VLAN découpe un switch en plusieurs réseaux de niveau 2 indépendants. Les
+      ports d'accès appartiennent à un VLAN ; les ports trunk transportent plusieurs
+      VLAN, chaque trame portant son étiquette 802.1Q.
+    challenges: [intermediate-04]
+  - id: services
+    title: Services et ports
+    text: |
+      Une machine joignable n'offre pas forcément le service voulu. Un port fermé
+      répond par un RST (refus immédiat) ; un paquet filtré, lui, reste sans réponse
+      (délai dépassé). Savoir les distinguer oriente tout le diagnostic.
+    challenges: [beginner-05]
+  - id: filtering
+    title: Le filtrage
+    text: |
+      Un pare-feu applique des règles dans l'ordre : la première qui correspond gagne,
+      sinon la politique par défaut. Un pare-feu à suivi de connexion laisse revenir
+      automatiquement les réponses des flux qu'il a autorisés.
+    challenges: [intermediate-05]

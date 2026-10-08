@@ -1,0 +1,19 @@
+id: beginner-02
+title: Un câble débranché
+topic: physical
+difficulty: easy
+description: |
+  Plus personne ne joint le serveur depuis le bureau. Les configurations IP
+  n'ont pas changé. Qu'est-ce qui a bougé dans la salle serveur ?
+time_limit_minutes: 15
+topology_ref: office
+objective: { from: PC1, to: 192.168.2.10 }
+faults:
+  - link_down: { a: "R1:eth1" }
+solution:
+  cause: link-down
+  device: R1
+  explanation: |
+    Le câble entre R1 et R2 est coupé : aucune trame ne passe plus entre les deux
+    routeurs. On le voit dans « show ifaces R1 » (mot « COUPÉ »).
+  commands: ["cable R1 eth1 restore"]

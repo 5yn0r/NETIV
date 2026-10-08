@@ -1,0 +1,99 @@
+format_version: 1
+metadata:
+  title: Ça tourne en rond
+  description: |-
+    Le trafic vers SRV n'aboutit pas et le routeur de bord reste muet. Observe le
+    TTL des paquets dans la trace : que lui arrive-t-il ?
+  author: NETIV
+topology:
+  network:
+    name: triangle
+    seed: 31
+  devices:
+  - name: PC1
+    type: host
+    interfaces:
+    - name: eth0
+      ip: 10.1.0.10/24
+    gateway: 10.1.0.1
+  - name: R1
+    type: router
+    interfaces:
+    - name: eth0
+      ip: 10.1.0.1/24
+    - name: eth1
+      ip: 10.12.0.1/30
+    routes:
+    - dest: 10.3.0.0/24
+      via: 10.12.0.2
+    - dest: 10.23.0.0/30
+      via: 10.12.0.2
+  - name: R2
+    type: router
+    interfaces:
+    - name: eth0
+      ip: 10.12.0.2/30
+    - name: eth1
+      ip: 10.23.0.1/30
+    routes:
+    - dest: 10.1.0.0/24
+      via: 10.12.0.1
+    - dest: 10.3.0.0/24
+      via: 10.23.0.2
+  - name: R3
+    type: router
+    interfaces:
+    - name: eth0
+      ip: 10.23.0.2/30
+    - name: eth1
+      ip: 10.3.0.1/24
+    routes:
+    - dest: 10.1.0.0/24
+      via: 10.23.0.1
+    - dest: 10.12.0.0/30
+      via: 10.23.0.1
+  - name: SRV
+    type: server
+    interfaces:
+    - name: eth0
+      ip: 10.3.0.10/24
+    gateway: 10.3.0.1
+    services:
+    - proto: tcp
+      port: 80
+      name: http
+  links:
+  - a: PC1:eth0
+    b: R1:eth0
+  - a: R1:eth1
+    b: R2:eth0
+  - a: R2:eth1
+    b: R3:eth0
+  - a: R3:eth1
+    b: SRV:eth0
+challenge:
+  id: advanced-02
+  title: Ça tourne en rond
+  topic: routing
+  difficulty: hard
+  description: |
+    Le trafic vers SRV n'aboutit pas et le routeur de bord reste muet. Observe le
+    TTL des paquets dans la trace : que lui arrive-t-il ?
+  time_limit_minutes: 25
+  objective:
+    from: PC1
+    to: 10.3.0.10
+  faults:
+  - add_route:
+      device: R3
+      dest: 10.3.0.10/32
+      via: 10.23.0.1
+  solution:
+    cause: routing-loop
+    device: R3
+    explanation: |
+      R3 possède une route /32 vers le serveur qui pointe vers R2, alors que R2 renvoie
+      vers R3 : les paquets tournent entre eux jusqu'à expiration du TTL. Une route
+      plus spécifique l'emporte toujours sur la route connectée.
+    commands:
+    - route del R3 10.3.0.10/32

@@ -1,0 +1,19 @@
+id: beginner-01
+title: PC1 ne sort plus du bureau
+topic: addressing
+difficulty: easy
+description: |
+  PC1 n'arrive plus à joindre le serveur (192.168.2.10), alors que PC2 y arrivait
+  ce matin. Trouve ce qui ne va pas sur PC1 et corrige-le.
+time_limit_minutes: 15
+topology_ref: office
+objective: { from: PC1, to: 192.168.2.10 }
+faults:
+  - set_gateway: { device: PC1, gateway: 192.168.1.254 }
+solution:
+  cause: wrong-gateway
+  device: PC1
+  explanation: |
+    PC1 envoyait tout le trafic « hors réseau » à 192.168.1.254, une adresse que
+    personne ne possède. La passerelle du bureau est le routeur R1 : 192.168.1.1.
+  commands: ["gateway PC1 192.168.1.1"]

@@ -1,0 +1,19 @@
+id: intermediate-04
+title: Deux collègues, deux mondes
+topic: switching
+difficulty: medium
+description: |
+  PC1 et PC3 sont dans le même VLAN (10) et le même sous-réseau, mais ne se voient
+  plus à travers le trunk entre SW1 et SW2. Regarde la configuration des switches.
+time_limit_minutes: 20
+topology_ref: campus
+objective: { from: PC1, to: 10.10.0.13 }
+faults:
+  - port_trunk: { iface: "SW1:tr", allowed: [20], native: 1 }
+solution:
+  cause: wrong-vlan
+  device: SW1
+  explanation: |
+    Le trunk de SW1 n'autorise plus que le VLAN 20 : les trames du VLAN 10 ne
+    traversent plus vers SW2. Il faut autoriser 10 et 20.
+  commands: ["port SW1 tr trunk 10,20 native 1"]

@@ -1,0 +1,23 @@
+id: beginner-05
+title: Le site web ne répond plus
+topic: services
+difficulty: easy
+description: |
+  Le serveur répond au ping, mais « curl PC1 192.168.2.10 » échoue. Le réseau
+  est-il en cause ? Que signifie la réponse du serveur ?
+time_limit_minutes: 15
+topology_ref: office
+objective:
+  from: PC1
+  to: 192.168.2.10
+  service: { proto: tcp, port: 80 }
+faults:
+  - stop_service: { device: SERVER, proto: tcp, port: 80 }
+solution:
+  cause: service-down
+  device: SERVER
+  explanation: |
+    Le serveur est joignable (le ping passe) mais plus aucun service n'écoute sur
+    le port 80 : il répond par un RST (connexion refusée). Il faut relancer le
+    service web.
+  commands: ["service add SERVER tcp 80 http"]

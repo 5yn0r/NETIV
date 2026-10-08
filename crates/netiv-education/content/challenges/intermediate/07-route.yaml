@@ -1,0 +1,19 @@
+id: intermediate-02
+title: Il manque une route
+topic: routing
+difficulty: medium
+description: |
+  PC1 ne joint plus SRV à travers les trois routeurs. Les liens sont tous
+  actifs. Suis le paquet de routeur en routeur.
+time_limit_minutes: 20
+topology_ref: triangle
+objective: { from: PC1, to: 10.3.0.10 }
+faults:
+  - remove_routes: { device: R2, dest: 10.3.0.0/24 }
+solution:
+  cause: missing-route
+  device: R2
+  explanation: |
+    R2 n'a plus de route vers 10.3.0.0/24 (le réseau du serveur) : il renvoie
+    « réseau inaccessible » à PC1. Il faut la rétablir via R3 (10.23.0.2).
+  commands: ["route add R2 10.3.0.0/24 via 10.23.0.2"]

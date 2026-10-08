@@ -1,0 +1,20 @@
+id: advanced-02
+title: Ça tourne en rond
+topic: routing
+difficulty: hard
+description: |
+  Le trafic vers SRV n'aboutit pas et le routeur de bord reste muet. Observe le
+  TTL des paquets dans la trace : que lui arrive-t-il ?
+time_limit_minutes: 25
+topology_ref: triangle
+objective: { from: PC1, to: 10.3.0.10 }
+faults:
+  - add_route: { device: R3, dest: 10.3.0.10/32, via: 10.23.0.1 }
+solution:
+  cause: routing-loop
+  device: R3
+  explanation: |
+    R3 possède une route /32 vers le serveur qui pointe vers R2, alors que R2 renvoie
+    vers R3 : les paquets tournent entre eux jusqu'à expiration du TTL. Une route
+    plus spécifique l'emporte toujours sur la route connectée.
+  commands: ["route del R3 10.3.0.10/32"]

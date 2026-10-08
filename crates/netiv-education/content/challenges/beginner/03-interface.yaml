@@ -1,0 +1,19 @@
+id: beginner-03
+title: L'interface éteinte
+topic: physical
+difficulty: easy
+description: |
+  Le réseau du bureau ne joint plus le serveur. Les câbles sont tous branchés.
+  Quel équipement du chemin a un port désactivé ?
+time_limit_minutes: 15
+topology_ref: office
+objective: { from: PC1, to: 192.168.2.10 }
+faults:
+  - interface_down: { iface: "R1:eth1" }
+solution:
+  cause: interface-down
+  device: R1
+  explanation: |
+    L'interface eth1 de R1 (vers R2) a été désactivée par un administrateur.
+    « iface R1 eth1 up » la rallume.
+  commands: ["iface R1 eth1 up"]

@@ -1,0 +1,21 @@
+[package]
+name = "netiv-security"
+description = "Analyse de sécurité d'une topologie et forensique des captures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+netiv-core = { workspace = true }
+netiv-diagnostics = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+netiv-topology = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

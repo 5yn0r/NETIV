@@ -1,0 +1,34 @@
+id: range-02
+title: Un rebond vers le serveur de fichiers
+difficulty: hard
+description: |
+  ALERTE — Le serveur de fichiers FILE01 a reçu des connexions SSH et SMB
+  inhabituelles. Aucun poste du LAN n'est concerné. Retrouve la machine qui rebondit
+  vers FILE01, explique ce que fait le pare-feu, puis ferme la brèche sans toucher
+  aux flux légitimes.
+time_limit_minutes: 30
+topology_ref: cyber
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: allow, proto: tcp, src: 10.9.0.11/32, dst: 192.168.20.20/32, port: "22-445", in: eth1, comment: "maintenance WEB02" }
+traffic:
+  - { at_s: 4, from: WEB02, to: 192.168.20.20, proto: tcp, ports: [22], repeat: 3, every_ms: 2000 }
+  - { at_s: 20, from: WEB02, to: 192.168.20.20, proto: tcp, ports: [445], repeat: 2, every_ms: 3000 }
+culprit:
+  device: WEB02
+  behavior: lateral-movement
+must_block:
+  - { from: WEB02, to: 192.168.20.20, service: { proto: tcp, port: 22 } }
+  - { from: WEB02, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+must_work:
+  - { from: PC01, to: 10.9.0.11, service: { proto: tcp, port: 80 } }
+  - { from: PC01, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+  - { from: INET, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
+solution:
+  explanation: |
+    WEB02 se connecte à FILE01 en SSH puis en SMB : un serveur exposé ne devrait jamais
+    initier de connexion vers le réseau des serveurs. Une règle « maintenance »
+    (allow tcp de WEB02 vers FILE01, ports 22 à 445) le permet. La supprimer rétablit
+    le cloisonnement DMZ / serveurs.
+  commands: ["acl del FW1 1"]
