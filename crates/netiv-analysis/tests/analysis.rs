@@ -515,3 +515,57 @@ fn documentation_is_deterministic() {
         generate_docs(&cyber(), "c", DocFormat::Markdown).unwrap()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Parallélisme : mêmes résultats qu'en séquentiel.
+
+fn generated(kind: &str, routers: usize, hosts: usize) -> Simulation {
+    use netiv_topology::generate::{GenSpec, generate};
+    let def = generate(&GenSpec {
+        kind: kind.parse().unwrap(),
+        routers,
+        hosts,
+        seed: 3,
+    })
+    .unwrap();
+    netiv_topology::build(&def).unwrap().sim
+}
+
+#[test]
+fn parallel_matrix_equals_sequential_matrix() {
+    use netiv_analysis::reach;
+    for mut sim in [cyber(), generated("campus", 5, 40)] {
+        // Une session déjà chargée : la mesure doit ignorer cet historique.
+        let ends = reach::end_devices(&sim);
+        let dst = reach::address_of(&sim, *ends.last().unwrap()).unwrap();
+        sim.ping(ends[0], dst, 20).unwrap();
+        sim.run_until_idle().unwrap();
+
+        let flows = reach::flows(&sim);
+        let seq = reach::measure_all_with(&sim, &flows, 1);
+        for threads in [2, 5, 16] {
+            assert_eq!(reach::measure_all_with(&sim, &flows, threads), seq);
+        }
+        assert_eq!(reach::measure_all(&sim, &flows), seq);
+    }
+}
+
+#[test]
+fn analyses_are_deterministic_with_threads() {
+    let sim = generated("cyber-range", 4, 24);
+    let first = (
+        health(&sim).render(),
+        netiv_security::analyze(&sim).render(),
+    );
+    for _ in 0..3 {
+        assert_eq!(
+            (
+                health(&sim).render(),
+                netiv_security::analyze(&sim).render()
+            ),
+            first
+        );
+    }
+    let a = what_if(&sim, "FW1 goes down").unwrap().render();
+    assert_eq!(what_if(&sim, "FW1 goes down").unwrap().render(), a);
+}

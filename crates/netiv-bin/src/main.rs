@@ -7,6 +7,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use netiv_cli::{Flow, Session};
 
+mod bench;
+
 /// NETIV — Network Côte d'Ivoire : laboratoire réseau interactif.
 #[derive(Parser)]
 #[command(name = "netiv", version, about)]
@@ -72,6 +74,18 @@ enum Command {
         #[arg(long)]
         allow_remote: bool,
     },
+    /// Mesure les performances du moteur et des analyses (réseau généré, graine fixe).
+    Bench {
+        /// Nombre de routeurs du réseau généré.
+        #[arg(long, default_value_t = 20)]
+        routers: usize,
+        /// Nombre de postes.
+        #[arg(long, default_value_t = 120)]
+        hosts: usize,
+        /// Nombre de pings pour mesurer le moteur.
+        #[arg(long, default_value_t = 2000)]
+        pings: u16,
+    },
     /// Documentation générée d'une topologie.
     Docs {
         /// Fichier de topologie YAML.
@@ -94,6 +108,16 @@ fn main() -> ExitCode {
             out,
         } => generate_cmd(&kind, routers, hosts, seed, out.as_deref()),
         Command::Docs { topology, format } => docs_cmd(&topology, &format),
+        Command::Bench {
+            routers,
+            hosts,
+            pings,
+        } => bench::run(&bench::BenchSpec {
+            routers,
+            hosts,
+            pings,
+        })
+        .map(|report| print!("{report}")),
         Command::Serve {
             bind,
             profile,

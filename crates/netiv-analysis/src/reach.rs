@@ -5,7 +5,7 @@ use std::net::Ipv4Addr;
 
 use netiv_core::packet::L4Proto;
 use netiv_core::{DeviceId, DeviceKind, Simulation};
-use netiv_diagnostics::{Probe, ProbeKind, run_probe};
+use netiv_diagnostics::{Probe, ProbeKind, parallel, run_probe};
 
 /// Nombre maximal de flux mesurés. Au-delà, on échantillonne à pas régulier
 /// (déterministe) : sur un très grand réseau, la mesure reste en quelques
@@ -124,10 +124,23 @@ pub fn measure(sim: &Simulation, f: &FlowId) -> bool {
     .is_ok_and(|r| r.success)
 }
 
-/// Mesure ces flux.
+/// Mesure ces flux, en parallèle sur les cœurs disponibles.
+///
+/// Chaque sonde part d'une copie neuve de la simulation : les flux sont
+/// indépendants, et le résultat est identique quel que soit le nombre de
+/// threads (voir [`measure_all_with`]).
 pub fn measure_all(sim: &Simulation, flows: &[FlowId]) -> Matrix {
+    measure_all_with(sim, flows, parallel::worker_count(flows.len()))
+}
+
+/// Comme [`measure_all`], avec un nombre de threads imposé (1 = séquentiel).
+pub fn measure_all_with(sim: &Simulation, flows: &[FlowId], threads: usize) -> Matrix {
+    // Une seule copie sans historique : les sondes la clonent ensuite à bas
+    // coût, au lieu de recopier la trace de la session à chaque fois.
+    let base = sim.fresh_clone();
+    let ok = parallel::par_map_with(flows, threads, |f| measure(&base, f));
     Matrix {
-        results: flows.iter().map(|f| (*f, measure(sim, f))).collect(),
+        results: flows.iter().copied().zip(ok).collect(),
     }
 }
 

@@ -15,6 +15,7 @@ netiv-cli = { workspace = true }
 netiv-core = { workspace = true }
 netiv-topology = { workspace = true }
 netiv-analysis = { workspace = true }
+netiv-security = { workspace = true }
 netiv-api = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }

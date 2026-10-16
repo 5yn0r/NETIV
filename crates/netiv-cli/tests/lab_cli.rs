@@ -89,6 +89,20 @@ fn a_network_exported_as_a_lab_can_be_reopened_with_its_changes() {
 }
 
 #[test]
+fn quotes_around_an_exported_title_are_not_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("q.netiv");
+    let mut s = Session::new();
+    s.load_yaml(&example("mvp.yaml"), &mut Vec::new()).unwrap();
+    run(
+        &mut s,
+        &format!(r#"lab export {} "Mon titre""#, file.display()),
+    );
+    let out = run(&mut Session::new(), &format!("load {}", file.display()));
+    assert!(out.contains("Lab « Mon titre »"), "{out}");
+}
+
+#[test]
 fn lab_open_uses_the_configured_library_directory() {
     let dir = tempfile::tempdir().unwrap();
     let mut s = Session::new();

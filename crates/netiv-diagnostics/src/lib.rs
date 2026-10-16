@@ -7,6 +7,7 @@ pub mod cause;
 pub mod diagnose;
 pub mod hints;
 pub mod l2;
+pub mod parallel;
 pub mod probe;
 
 pub use cause::{CauseKind, Layer, RootCause};

@@ -108,7 +108,7 @@ pub fn run_probe(sim: &Simulation, probe: &Probe) -> Result<ProbeResult, NetivEr
     work.command(probe.src, cmd)?;
     work.run_until_idle()?;
 
-    let events = work.trace().events().to_vec();
+    let events = work.take_trace();
     let (mut sent, mut replies) = (0u16, 0u16);
     let mut max_rtt: Option<SimTime> = None;
     let mut icmp_error = None;

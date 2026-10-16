@@ -15,7 +15,7 @@ use netiv_core::packet::{EtherPayload, L4Proto};
 use netiv_core::switch::PortMode;
 use netiv_core::{DeviceId, DeviceKind, IfaceId, Simulation, TraceKind};
 use netiv_diagnostics::l2::{L2Options, l2_domain};
-use netiv_diagnostics::{Probe, ProbeKind, run_probe};
+use netiv_diagnostics::{Probe, ProbeKind, parallel, run_probe};
 
 /// Gravité d'un constat.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -122,8 +122,10 @@ pub fn analyze(sim: &Simulation) -> Report {
     let mut a = Analyzer {
         sim,
         memo: BTreeMap::new(),
+        pings: BTreeMap::new(),
         findings: Vec::new(),
     };
+    a.prewarm_pings();
     a.segmentation();
     a.server_isolation();
     a.unfiltered_paths();
@@ -142,8 +144,43 @@ pub fn analyze(sim: &Simulation) -> Report {
 
 struct Analyzer<'a> {
     sim: &'a Simulation,
+    /// Résultats des sondes TCP/UDP : (source, destination, 1 = tcp / 2 = udp, port).
     memo: BTreeMap<(DeviceId, Ipv4Addr, u8, u16), Option<bool>>,
+    /// Résultats des pings, avec les routeurs traversés à l'aller.
+    pings: BTreeMap<(DeviceId, Ipv4Addr), Option<PingInfo>>,
     findings: Vec<Finding>,
+}
+
+/// Ce qu'un ping de sonde a appris.
+#[derive(Clone, Debug)]
+struct PingInfo {
+    success: bool,
+    /// Routeurs et pare-feu qui ont reçu la requête, dans l'ordre.
+    routers: Vec<DeviceId>,
+}
+
+/// Lance un ping de sonde et relève les équipements de filtrage traversés à
+/// l'aller (un routeur / pare-feu qui reçoit un paquet destiné à `dst`).
+fn probe_ping(sim: &Simulation, src: DeviceId, dst: Ipv4Addr) -> Option<PingInfo> {
+    let kind = ProbeKind::Ping { count: 1 };
+    let r = run_probe(sim, &Probe { src, dst, kind }).ok()?;
+    let mut routers = Vec::new();
+    for e in &r.events {
+        if let TraceKind::FrameReceived { frame, .. } = &e.kind {
+            if let EtherPayload::Ipv4(p) = &frame.payload {
+                let router = sim
+                    .device(e.device)
+                    .is_some_and(|d| matches!(d.kind, DeviceKind::Router | DeviceKind::Firewall));
+                if p.dst == dst && router && !routers.contains(&e.device) {
+                    routers.push(e.device);
+                }
+            }
+        }
+    }
+    Some(PingInfo {
+        success: r.success,
+        routers,
+    })
 }
 
 /// Une première adresse IP de l'équipement.
@@ -231,14 +268,77 @@ impl Analyzer<'_> {
         })
     }
 
+    /// Résultat (mémorisé) d'un ping de sonde.
+    fn ping_info(&mut self, src: DeviceId, dst: Ipv4Addr) -> Option<&PingInfo> {
+        let sim = self.sim;
+        self.pings
+            .entry((src, dst))
+            .or_insert_with(|| probe_ping(sim, src, dst))
+            .as_ref()
+    }
+
+    /// Lance en parallèle les pings dont les contrôles auront besoin
+    /// (postes → serveurs, postes → administration, zones externes →
+    /// interne). Les contrôles lisent ensuite le cache : le résultat est le
+    /// même qu'en séquentiel, en une fraction du temps.
+    fn prewarm_pings(&mut self) {
+        let mut pairs: BTreeSet<(DeviceId, Ipv4Addr)> = BTreeSet::new();
+        let ip_of = |d: &DeviceId| first_ip(self.sim, *d);
+        let servers: Vec<Ipv4Addr> = self
+            .with_role(&["server"])
+            .iter()
+            .filter_map(ip_of)
+            .collect();
+        for u in self.with_role(&["user"]) {
+            pairs.extend(servers.iter().map(|ip| (u, *ip)));
+        }
+        let mgmt: Vec<(DeviceId, Ipv4Addr)> = self
+            .sim
+            .devices()
+            .iter()
+            .flat_map(|d| {
+                d.ifaces
+                    .iter()
+                    .filter(|i| i.management)
+                    .filter_map(move |i| i.ip.map(|n| (d.id, n.addr())))
+            })
+            .collect();
+        for u in self.with_role(&["user", "guest", "iot"]) {
+            pairs.extend(mgmt.iter().filter(|(d, _)| *d != u).map(|(_, ip)| (u, *ip)));
+        }
+        let internal: Vec<(DeviceId, Ipv4Addr)> = self
+            .with_role(&["user", "server"])
+            .into_iter()
+            .filter_map(|d| first_ip(self.sim, d).map(|ip| (d, ip)))
+            .collect();
+        for s in self.with_role(&["internet", "dmz"]) {
+            pairs.extend(
+                internal
+                    .iter()
+                    .filter(|(d, _)| *d != s)
+                    .map(|(_, ip)| (s, *ip)),
+            );
+        }
+        let todo: Vec<(DeviceId, Ipv4Addr)> = pairs
+            .into_iter()
+            .filter(|k| !self.pings.contains_key(k))
+            .collect();
+        // Une seule copie sans historique, partagée par toutes les sondes.
+        let base = self.sim.fresh_clone();
+        let results = parallel::par_map(&todo, |(src, dst)| probe_ping(&base, *src, *dst));
+        self.pings.extend(todo.into_iter().zip(results));
+    }
+
     /// kind : 0 = ping, 1 = tcp, 2 = udp.
     fn reach_kind(&mut self, src: DeviceId, dst: Ipv4Addr, kind: u8, port: u16) -> Option<bool> {
+        if kind == 0 {
+            return self.ping_info(src, dst).map(|p| p.success);
+        }
         let key = (src, dst, kind, port);
         if let Some(v) = self.memo.get(&key) {
             return *v;
         }
         let pk = match kind {
-            0 => ProbeKind::Ping { count: 1 },
             1 => ProbeKind::Tcp { port },
             _ => ProbeKind::Udp { port },
         };
@@ -249,27 +349,11 @@ impl Analyzer<'_> {
         r
     }
 
-    /// Équipements de filtrage traversés à l'aller par un flux `src → dst`
-    /// (un routeur / pare-feu qui reçoit le paquet).
-    fn routers_on_path(&self, src: DeviceId, dst: Ipv4Addr) -> Vec<DeviceId> {
-        let mut out = Vec::new();
-        let kind = ProbeKind::Ping { count: 1 };
-        let Ok(r) = run_probe(self.sim, &Probe { src, dst, kind }) else {
-            return out;
-        };
-        for e in &r.events {
-            if let TraceKind::FrameReceived { frame, .. } = &e.kind {
-                if let EtherPayload::Ipv4(p) = &frame.payload {
-                    let router = self.sim.device(e.device).is_some_and(|d| {
-                        matches!(d.kind, DeviceKind::Router | DeviceKind::Firewall)
-                    });
-                    if p.dst == dst && router && !out.contains(&e.device) {
-                        out.push(e.device);
-                    }
-                }
-            }
-        }
-        out
+    /// Équipements de filtrage traversés à l'aller par un flux `src → dst`.
+    fn routers_on_path(&mut self, src: DeviceId, dst: Ipv4Addr) -> Vec<DeviceId> {
+        self.ping_info(src, dst)
+            .map(|p| p.routers.clone())
+            .unwrap_or_default()
     }
 
     /// Domaines de diffusion : groupes d'interfaces IP qui communiquent en

@@ -5,8 +5,12 @@ Laboratoire réseau interactif en Rust : **construire, observer, casser, diagnos
 > Ne pas seulement montrer qu'un réseau fonctionne, mais comprendre *pourquoi* il fonctionne
 > et pourquoi il tombe en panne.
 
-Version **0.2** (phases 0 à 8, voir ci-dessous) — Linux. Documents de référence : [Cahier de charge](Cahier_de_charge.md) ·
-[Spec d'architecture](SPEC_ARCHITECTURE.md).
+Version **0.3** (phases 0 à 8, moteur optimisé, interface web flexible) — Linux.
+
+**Documentation : [docs/](docs/README.md)** — [guide utilisateur](docs/guide-utilisateur.md) ·
+[référence des commandes](docs/reference-commandes.md) · [format des topologies](docs/format-topologie.md) ·
+[API](docs/api.md) · [architecture](docs/architecture.md) · [performance](docs/performance.md).
+Conception : [cahier des charges](Cahier_de_charge.md) · [spécification d'architecture](SPEC_ARCHITECTURE.md).
 
 ## Essayer
 
@@ -57,6 +61,7 @@ netiv run topologie.yaml --script lab.txt     # exécute des commandes puis quit
 netiv generate --type campus --routers 5 --hosts 20 --seed 1   # topologie générée
 netiv docs topologie.yaml --format md         # documentation (md, json, yaml)
 netiv serve                                   # API HTTP + interface web sur http://127.0.0.1:8787
+netiv bench                                   # mesures de performance reproductibles
 ```
 
 ## Ce que contient NETIV
@@ -68,21 +73,35 @@ netiv serve                                   # API HTTP + interface web sur htt
 | 5 · Éducation | 15 défis, scoring (diagnostic 40 + correction 40 + temps 20 − indices), XP, niveaux, 6 badges, parcours, mode enseignant | `challenge …`, `answer`, `dashboard`, `badges`, `learn`, `course` |
 | 6 · Sécurité | analyseur (SEC-001…011), forensique sur captures `.nlv`, 3 cyber ranges | `security analyze`, `capture save`, `forensic analyze`, `range …` |
 | 7 · Intelligence | tuteur scripté, générateurs de topologies et de défis auto-validés, what-if, score de santé, docs | `tutor`, `topology generate`, `challenge generate`, `what-if`, `health`, `docs` |
-| 8 · Écosystème (local) | labs partageables `.netiv`, classement local, API HTTP, interface web | `lab list/export/import`, `leaderboard`, `netiv serve` |
+| 8 · Écosystème (local) | labs partageables `.netiv`, classement local, API HTTP, interface web | `lab list/open/export`, `leaderboard`, `netiv serve` |
 
 Exemples : `examples/*.yaml` ; labs prêts à l'emploi dans `labs/*.netiv`.
 
 ### Interface web
 
-`netiv serve` démarre un serveur **local uniquement** (127.0.0.1) : schéma de la topologie
-(équipements déplaçables), console, **Packet Journey animé** (◀ ▶ lecture), tables par équipement,
-trace filtrable, santé / sécurité / what-if / documentation, défis avec minuteur et indices.
-Sans dépendance de build : HTML/CSS/JS embarqués dans le binaire.
+![Interface web de NETIV](docs/img/interface.png)
+
+`netiv serve` démarre un serveur **local uniquement** (127.0.0.1) : schéma de la topologie,
+console, **Packet Journey animé** (◀ ▶ lecture), tables par équipement, trace filtrable,
+santé / sécurité / what-if / documentation, défis avec minuteur et indices.
+
+L'affichage s'adapte à chacun : zones **redimensionnables** (glisser leur bord, ou au clavier),
+catalogue / détails / console **repliables** (`[` `]` `` ` ``), mode « schéma seul » (`F`),
+schéma **zoomable et déplaçable**, taille du texte et densité réglables (menu *Affichage*), aide
+intégrée (`?`). La disposition est mémorisée dans le navigateur. Sans dépendance de build :
+HTML/CSS/JS embarqués dans le binaire.
 
 Garde-fous : refus de toute adresse non locale sans `--allow-remote`, contrôle de l'en-tête `Host`,
 sessions en mode « bac à sable » (aucun accès fichier arbitraire depuis l'API), corps limité à 1 Mio,
 16 labs simultanés au maximum. Tout reste **100 % simulé** : aucune socket réseau réelle n'est ouverte
 par la simulation.
+
+### Performance
+
+Le moteur traite environ 800 000 événements par seconde. Les analyses (santé, what-if, sécurité)
+lancent leurs sondes **en parallèle** sur des copies légères, sans jamais recopier la trace de la
+session. Exemple : 20 000 pings passent de 85 s à 0,45 s, un score de santé après une longue
+session de 15 s à 0,16 s. Détails et méthode : [docs/performance.md](docs/performance.md).
 
 ### Hors périmètre (assumé)
 
@@ -91,7 +110,8 @@ marketplace en ligne, mode « réseau réel ».
 
 ## Format de topologie
 
-Voir [examples/mvp.yaml](examples/mvp.yaml). Types : `host`, `server`, `router`, `switch`
+Référence complète : [docs/format-topologie.md](docs/format-topologie.md) ; exemple :
+[examples/mvp.yaml](examples/mvp.yaml). Types : `host`, `server`, `router`, `firewall`, `switch`
 (`ports: N` crée `port1..portN`). Câbles : `Équipement:interface`, avec `latency_us` et `loss`
 optionnels. Les erreurs de structure bloquent le chargement ; les mauvaises configurations
 (IP en double, passerelle hors sous-réseau...) ne sont que des **avertissements**, car un
@@ -103,8 +123,12 @@ laboratoire de dépannage contient volontairement des réseaux défectueux.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets
 cargo test --workspace
-UPDATE_GOLDEN=1 cargo test -p netiv-cli    # régénère la sortie de référence
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+UPDATE_GOLDEN=1 cargo test -p netiv-cli --test session    # régénère la sortie de référence
+cargo build --release && ./target/release/netiv bench    # mesures de performance
 ```
+
+Conventions et organisation des tests : [docs/contribuer.md](docs/contribuer.md).
 
 | Crate | Rôle |
 |---|---|
@@ -117,6 +141,6 @@ UPDATE_GOLDEN=1 cargo test -p netiv-cli    # régénère la sortie de référenc
 | `netiv-education` | Défis, scoring, profils, cours, cyber ranges, tuteur |
 | `netiv-cli` | Session (REPL), bibliothèque `netiv_cli` |
 | `netiv-api` | API HTTP (axum) + interface web embarquée |
-| `netiv-bin` | Binaire `netiv` (run, validate, generate, docs, serve) |
+| `netiv-bin` | Binaire `netiv` (run, validate, generate, docs, serve, bench) |
 
 Le moteur est **déterministe** : même topologie, mêmes commandes, même graine → trace identique.

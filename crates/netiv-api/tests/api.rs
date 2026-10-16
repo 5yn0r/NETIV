@@ -145,6 +145,55 @@ async fn static_files_are_served_with_the_right_types() {
     assert_eq!(get(&app, "/nope").await.status, StatusCode::NOT_FOUND);
 }
 
+#[tokio::test]
+async fn the_page_offers_a_flexible_layout() {
+    let page = get(&app(), "/").await.text;
+    for needle in [
+        r#"id="split-side""#,
+        r#"id="split-panel""#,
+        r#"id="split-console""#,
+        r#"role="separator""#,
+        r#"id="view-menu""#,
+        r#"id="vb-focus""#,
+        r#"id="z-fit""#,
+        r#"id="help-dialog""#,
+    ] {
+        assert!(page.contains(needle), "{needle} absent de la page");
+    }
+}
+
+/// Chaque `$('#id')` du script désigne un élément de la page, ou un élément
+/// que le script crée lui-même (`id: '…'`). Évite qu'un renommage dans le
+/// HTML casse l'interface en silence.
+#[test]
+fn every_element_used_by_the_script_exists() {
+    let html = include_str!("../web/index.html");
+    let js = include_str!("../web/app.js");
+    let ids_after = |text: &str, marker: &str, end: char| -> Vec<String> {
+        text.match_indices(marker)
+            .map(|(i, _)| {
+                text[i + marker.len()..]
+                    .chars()
+                    .take_while(|c| *c != end)
+                    .collect::<String>()
+            })
+            .filter(|id| id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+            .collect()
+    };
+    let created = ids_after(js, "id: '", '\'');
+    let used = ids_after(js, "$('#", '\'');
+    assert!(
+        used.len() > 30,
+        "trop peu d'identifiants trouvés : {used:?}"
+    );
+    for id in used {
+        assert!(
+            html.contains(&format!(r#"id="{id}""#)) || created.contains(&id),
+            "#{id} est utilisé par app.js mais n'existe pas"
+        );
+    }
+}
+
 // ------------------------------------------------------------------ cycle de vie d'un lab
 
 #[tokio::test]

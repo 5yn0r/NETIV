@@ -1,5 +1,6 @@
 //! Une session NETIV : une simulation chargée et les commandes pour la piloter.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Write};
 use std::net::Ipv4Addr;
@@ -1416,20 +1417,28 @@ fn print_ping_report(
         .collect();
     writeln!(out, "PING {dst} depuis {from} ({} requête(s))", sent.len())?;
 
+    // Une seule passe : le résultat de chaque transaction (réponse, erreur ou
+    // délai dépassé). Chercher dans la trace pour chaque ping serait
+    // quadratique sur une longue série.
+    let mut results: HashMap<TraceId, &TraceEvent> = HashMap::new();
+    for e in events {
+        if let (
+            TraceKind::PingReply { .. }
+            | TraceKind::PingError { .. }
+            | TraceKind::PingTimeout { .. },
+            Some(tid),
+        ) = (&e.kind, e.trace_id)
+        {
+            results.entry(tid).or_insert(e);
+        }
+    }
+
     let (mut ok, mut last_failed_trace) = (0usize, None);
     for s in &sent {
         let (TraceKind::PingSent { seq, .. }, Some(tid)) = (&s.kind, s.trace_id) else {
             continue;
         };
-        let result = events.iter().find(|e| {
-            e.trace_id == Some(tid)
-                && matches!(
-                    e.kind,
-                    TraceKind::PingReply { .. }
-                        | TraceKind::PingError { .. }
-                        | TraceKind::PingTimeout { .. }
-                )
-        });
+        let result = results.get(&tid);
         let text = match result.map(|e| &e.kind) {
             Some(TraceKind::PingReply { from, ttl, rtt, .. }) => {
                 ok += 1;

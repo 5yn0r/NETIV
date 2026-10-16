@@ -23,6 +23,47 @@
       <span class="tag">Build. Break. Understand. Secure.</span>
     </div>
     <div class="top-actions">
+      <div class="view-btns" role="group" aria-label="Zones affichées">
+        <button id="vb-side" type="button" aria-pressed="true" title="Catalogue  [" aria-label="Afficher le catalogue">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><rect class="on" x="3.5" y="4.5" width="4" height="11" rx="1"/></svg>
+        </button>
+        <button id="vb-console" type="button" aria-pressed="true" title="Console  `" aria-label="Afficher la console">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><rect class="on" x="3.5" y="11.5" width="13" height="4" rx="1"/></svg>
+        </button>
+        <button id="vb-panel" type="button" aria-pressed="true" title="Détails  ]" aria-label="Afficher le panneau de détails">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><rect class="on" x="11.5" y="4.5" width="5" height="11" rx="1"/></svg>
+        </button>
+        <button id="vb-focus" type="button" aria-pressed="false" title="Schéma seul  F" aria-label="Schéma seul">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7.5V3.5h4M13 3.5h4v4M17 12.5v4h-4M7 16.5H3v-4"/></svg>
+        </button>
+      </div>
+      <details id="view-menu" class="menu">
+        <summary>Affichage</summary>
+        <div class="menu-body">
+          <div>
+            <h4>Taille du texte</h4>
+            <div class="seg" role="group" aria-label="Taille du texte" id="font-seg">
+              <button type="button" data-font="0.9" aria-pressed="false">A−</button>
+              <button type="button" data-font="1" aria-pressed="true">A</button>
+              <button type="button" data-font="1.15" aria-pressed="false">A+</button>
+              <button type="button" data-font="1.3" aria-pressed="false">A++</button>
+            </div>
+          </div>
+          <div>
+            <h4>Densité</h4>
+            <div class="seg" role="group" aria-label="Densité" id="density-seg">
+              <button type="button" data-density="normal" aria-pressed="true">Normale</button>
+              <button type="button" data-density="compact" aria-pressed="false">Compacte</button>
+            </div>
+          </div>
+          <div>
+            <h4><label for="console-size">Hauteur de la console</label></h4>
+            <input id="console-size" type="range" min="80" max="600" step="10" value="200">
+          </div>
+          <button id="layout-reset" type="button">Réinitialiser la disposition</button>
+        </div>
+      </details>
+      <button id="help-btn" class="icon-btn" type="button" aria-haspopup="dialog" aria-label="Aide et raccourcis" title="Aide et raccourcis  ?">?</button>
       <button id="profile-chip" class="chip" type="button" aria-haspopup="dialog" title="Progression"></button>
       <button id="theme-toggle" class="icon-btn" type="button" aria-label="Changer de thème" title="Changer de thème">◐</button>
     </div>
@@ -31,7 +72,7 @@
   <div id="banner" class="banner" role="status" hidden></div>
 
   <main class="layout">
-    <aside class="side" aria-label="Labs">
+    <aside id="side" class="side" aria-label="Labs">
       <section class="card">
         <h2>Labs ouverts</h2>
         <ul id="open-labs" class="lab-list"></ul>
@@ -48,6 +89,8 @@
         <div id="library" class="library"></div>
       </section>
     </aside>
+
+    <div id="split-side" class="splitter v" role="separator" aria-orientation="vertical" aria-controls="side" aria-label="Largeur du catalogue (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
     <section id="stage" class="stage" aria-label="Réseau">
       <div class="stage-head">
@@ -71,12 +114,21 @@
         <div id="canvas-empty" class="empty">
           <p><strong>Choisis un lab</strong> dans le catalogue pour voir son schéma.</p>
         </div>
+        <div class="zoom" role="group" aria-label="Zoom du schéma">
+          <button id="z-in" type="button" title="Zoomer  +" aria-label="Zoomer">+</button>
+          <button id="z-out" type="button" title="Dézoomer  −" aria-label="Dézoomer">−</button>
+          <button id="z-fit" type="button" title="Tout afficher  0" aria-label="Tout afficher">⤢</button>
+          <button id="z-relayout" type="button" title="Réorganiser les équipements" aria-label="Réorganiser les équipements">↻</button>
+          <span id="z-level" class="zoom-level" aria-live="polite">100 %</span>
+        </div>
         <ul class="legend" aria-label="Légende">
           <li><i class="dot ok"></i> en service</li>
           <li><i class="dot bad"></i> coupé / éteint</li>
           <li><i class="dot pkt"></i> paquet</li>
         </ul>
       </div>
+
+      <div id="split-console" class="splitter h" role="separator" aria-orientation="horizontal" aria-label="Hauteur de la console (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
       <section class="console" aria-label="Console">
         <div id="console-out" class="console-out" role="log" aria-live="polite"></div>
@@ -87,7 +139,9 @@
       </section>
     </section>
 
-    <section class="panel" aria-label="Détails">
+    <div id="split-panel" class="splitter v" role="separator" aria-orientation="vertical" aria-controls="panel" aria-label="Largeur du panneau de détails (flèches ; double-clic : par défaut)" tabindex="0"></div>
+
+    <section id="panel" class="panel" aria-label="Détails">
       <div class="tabs" role="tablist" aria-label="Panneaux">
         <button role="tab" data-tab="device" aria-selected="true">Appareil</button>
         <button role="tab" data-tab="journey" aria-selected="false">Parcours</button>
@@ -102,6 +156,28 @@
       <div id="tab-challenge" class="tab-body" role="tabpanel" hidden></div>
     </section>
   </main>
+
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <form method="dialog">
+      <h2 id="help-title">Aide</h2>
+      <h3>Raccourcis clavier</h3>
+      <dl class="help-grid">
+        <dt><kbd>[</kbd></dt><dd>afficher / masquer le catalogue</dd>
+        <dt><kbd>]</kbd></dt><dd>afficher / masquer le panneau de détails</dd>
+        <dt><kbd>`</kbd></dt><dd>afficher / masquer la console</dd>
+        <dt><kbd>F</kbd></dt><dd>schéma seul (plein cadre)</dd>
+        <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>zoomer, dézoomer, tout afficher</dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>espace</kbd></dt><dd>dans « Parcours » : étape précédente, suivante, lecture</dd>
+        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>dans la console : historique des commandes</dd>
+        <dt><kbd>?</kbd></dt><dd>cette aide</dd>
+      </dl>
+      <p class="muted">Schéma : molette pour zoomer, glisser le fond pour se déplacer, glisser un équipement pour le placer.
+        Bords des zones : glisser pour redimensionner (ou flèches au clavier), double-clic pour revenir à la taille par défaut.</p>
+      <h3>Commandes</h3>
+      <pre id="help-commands">Ouvre un lab pour afficher la liste des commandes.</pre>
+      <button class="primary" value="close">Fermer</button>
+    </form>
+  </dialog>
 
   <dialog id="profile-dialog" aria-labelledby="profile-title">
     <form method="dialog">

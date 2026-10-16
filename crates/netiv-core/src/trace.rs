@@ -3,6 +3,7 @@
 //! Packet Journey, Packet Microscope, Explain Engine et diagnostic sont des
 //! *vues* sur cette trace.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::net::Ipv4Addr;
 
@@ -371,12 +372,53 @@ pub struct TraceEvent {
 }
 
 /// Journal des événements de trace.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Un index `transaction → événements` est tenu à jour à chaque ajout :
+/// [`TraceLog::by_trace`] ne parcourt que les événements de la transaction,
+/// quelle que soit la longueur du journal.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(from = "TraceLogData")]
 pub struct TraceLog {
+    events: Vec<TraceEvent>,
+    #[serde(skip)]
+    index: HashMap<TraceId, Vec<u32>>,
+}
+
+/// Forme sérialisée du journal (l'index est reconstruit au chargement).
+#[derive(Deserialize)]
+struct TraceLogData {
     events: Vec<TraceEvent>,
 }
 
+impl From<TraceLogData> for TraceLog {
+    fn from(data: TraceLogData) -> Self {
+        let mut log = TraceLog::default();
+        for e in data.events {
+            log.index_event(&e);
+            log.events.push(e);
+        }
+        log
+    }
+}
+
+// L'index se déduit des événements : on ne compare que ces derniers.
+impl PartialEq for TraceLog {
+    fn eq(&self, other: &Self) -> bool {
+        self.events == other.events
+    }
+}
+
+impl Eq for TraceLog {}
+
 impl TraceLog {
+    fn index_event(&mut self, e: &TraceEvent) {
+        if let Some(tid) = e.trace_id {
+            // Plus de 4 milliards d'événements ne tiendraient pas en mémoire.
+            let at = u32::try_from(self.events.len()).unwrap_or(u32::MAX);
+            self.index.entry(tid).or_default().push(at);
+        }
+    }
+
     /// Ajoute un événement et retourne son numéro.
     pub(crate) fn push(
         &mut self,
@@ -387,20 +429,29 @@ impl TraceLog {
         kind: TraceKind,
     ) -> u64 {
         let seq = self.events.len() as u64;
-        self.events.push(TraceEvent {
+        let event = TraceEvent {
             seq,
             time,
             device,
             trace_id,
             caused_by,
             kind,
-        });
+        };
+        self.index_event(&event);
+        self.events.push(event);
         seq
     }
 
     /// Vide le journal.
     pub(crate) fn clear(&mut self) {
         self.events.clear();
+        self.index.clear();
+    }
+
+    /// Retire tous les événements du journal et les rend, sans copie.
+    pub(crate) fn take(&mut self) -> Vec<TraceEvent> {
+        self.index.clear();
+        std::mem::take(&mut self.events)
     }
 
     /// Tous les événements.
@@ -430,7 +481,11 @@ impl TraceLog {
 
     /// Événements d'une transaction, dans l'ordre.
     pub fn by_trace(&self, id: TraceId) -> impl Iterator<Item = &TraceEvent> {
-        self.events.iter().filter(move |e| e.trace_id == Some(id))
+        self.index
+            .get(&id)
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .filter_map(|&i| self.events.get(i as usize))
     }
 
     /// Événements d'un équipement, dans l'ordre.

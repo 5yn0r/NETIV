@@ -69,6 +69,7 @@
     libTab: 'networks',
     tab: 'device',
     positions: new Map(),
+    view: { x: 0, y: 0, w: 1000, h: 560 }, // viewBox du schéma (zoom, déplacement)
     history: [],
     histPos: 0,
     deadline: null,    // horodatage de fin du temps conseillé
@@ -222,6 +223,7 @@
 
   function resetViews() {
     stopPlay();
+    state.helpText = null;
     state.journey = null;
     state.step = -1;
     state.tx = [];
@@ -492,6 +494,111 @@
     }
     state.positions = new Map(Object.entries(saved));
     state.posKey = key;
+    const v = store(`netiv.view.${key}`);
+    state.view = v && v.w > 0 ? v : defaultView();
+  }
+
+  // ------------------------------------------------------------------ zoom et déplacement du schéma
+
+  const MIN_W = VIEW_W / 8;   // zoom maximal ×8
+  const MAX_W = VIEW_W * 4;   // zoom minimal ×¼
+
+  function defaultView() {
+    return { x: 0, y: 0, w: VIEW_W, h: VIEW_H };
+  }
+
+  function applyView() {
+    const v = state.view;
+    $('#canvas').setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
+    $('#z-level').textContent = `${Math.round((VIEW_W / v.w) * 100)} %`;
+  }
+
+  let viewSaveTimer = null;
+  function saveView() {
+    clearTimeout(viewSaveTimer);
+    viewSaveTimer = setTimeout(() => { if (state.posKey) store(`netiv.view.${state.posKey}`, state.view); }, 300);
+  }
+
+  /** Zoome d'un facteur `k` autour du point (cx, cy) du schéma. */
+  function zoomAt(k, cx, cy) {
+    const v = state.view;
+    const w = Math.max(MIN_W, Math.min(MAX_W, v.w / k));
+    const r = w / v.w;
+    const h = w * (VIEW_H / VIEW_W);
+    if (cx === undefined) { cx = v.x + v.w / 2; cy = v.y + v.h / 2; }
+    state.view = { x: cx - (cx - v.x) * r, y: cy - (cy - v.y) * r, w, h };
+    applyView();
+    saveView();
+  }
+
+  /** Cadre la vue sur tous les équipements. */
+  function fitView() {
+    if (!state.positions.size) { state.view = defaultView(); applyView(); saveView(); return; }
+    const pts = Array.from(state.positions.values());
+    const pad = 70;
+    const minX = Math.min(...pts.map((p) => p.x)) - pad, maxX = Math.max(...pts.map((p) => p.x)) + pad;
+    const minY = Math.min(...pts.map((p) => p.y)) - pad, maxY = Math.max(...pts.map((p) => p.y)) + pad;
+    let w = Math.max(maxX - minX, MIN_W), h = Math.max(maxY - minY, MIN_W * (VIEW_H / VIEW_W));
+    // Même proportions que la zone d'affichage.
+    if (w / h > VIEW_W / VIEW_H) h = w * (VIEW_H / VIEW_W); else w = h * (VIEW_W / VIEW_H);
+    w = Math.min(w, MAX_W); h = w * (VIEW_H / VIEW_W);
+    state.view = { x: (minX + maxX - w) / 2, y: (minY + maxY - h) / 2, w, h };
+    applyView();
+    saveView();
+  }
+
+  /** Recalcule la disposition automatique et oublie les positions enregistrées. */
+  function relayout() {
+    const snap = state.snap;
+    if (!snap) return;
+    try { localStorage.removeItem(state.posKey); localStorage.removeItem(`netiv.view.${state.posKey}`); } catch (_) { /* sans stockage */ }
+    state.positions = new Map();
+    state.posKey = null;
+    renderCanvas();
+    fitView();
+  }
+
+  function initCanvasControls() {
+    const svg = $('#canvas');
+    svg.addEventListener('wheel', (e) => {
+      if (!state.snap) return;
+      e.preventDefault();
+      const p = svgPoint(svg, e);
+      zoomAt(Math.exp(-e.deltaY * 0.0015), p.x, p.y);
+    }, { passive: false });
+
+    // Glisser le fond : déplacer la vue.
+    let pan = null;
+    svg.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('.node') || !state.snap) return;
+      const m = svg.getScreenCTM();
+      if (!m) return;
+      pan = { sx: e.clientX, sy: e.clientY, view: { ...state.view }, scale: m.a };
+      svg.setPointerCapture(e.pointerId);
+      svg.classList.add('panning');
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (!pan) return;
+      state.view = {
+        ...pan.view,
+        x: pan.view.x - (e.clientX - pan.sx) / pan.scale,
+        y: pan.view.y - (e.clientY - pan.sy) / pan.scale,
+      };
+      applyView();
+    });
+    const endPan = () => {
+      if (!pan) return;
+      pan = null;
+      svg.classList.remove('panning');
+      saveView();
+    };
+    svg.addEventListener('pointerup', endPan);
+    svg.addEventListener('pointercancel', endPan);
+
+    $('#z-in').addEventListener('click', () => zoomAt(1.25));
+    $('#z-out').addEventListener('click', () => zoomAt(0.8));
+    $('#z-fit').addEventListener('click', fitView);
+    $('#z-relayout').addEventListener('click', relayout);
   }
 
   function glyph(kind) {
@@ -519,9 +626,9 @@
     const snap = state.snap;
     $('#canvas-empty').hidden = !!(snap && snap.devices.length);
     if (!snap || !snap.devices.length) return;
-    svg.setAttribute('viewBox', `0 0 ${VIEW_W} ${VIEW_H}`);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     if (!state.positions.size || state.posKey !== `netiv.pos.${snap.name}.${snap.devices.length}`) ensurePositions(snap);
+    applyView();
     const big = snap.devices.length > 40;
     const scale = snap.devices.length > 90 ? 0.55 : snap.devices.length > 40 ? 0.75 : 1;
 
@@ -573,10 +680,22 @@
     return m ? pt.matrixTransform(m.inverse()) : { x: evt.clientX, y: evt.clientY };
   }
 
+  /** Déplace un équipement et les extrémités de ses câbles, sans tout redessiner. */
+  function moveNode(g, name, p) {
+    state.positions.set(name, p);
+    const t = g.getAttribute('transform') || '';
+    g.setAttribute('transform', t.replace(/translate\([^)]*\)/, `translate(${p.x} ${p.y})`));
+    for (const l of $$('#canvas .link')) {
+      if (l.dataset.a === name) { l.setAttribute('x1', p.x); l.setAttribute('y1', p.y); }
+      if (l.dataset.b === name) { l.setAttribute('x2', p.x); l.setAttribute('y2', p.y); }
+    }
+  }
+
   function attachNode(g, name) {
     const svg = $('#canvas');
     let drag = null;
     g.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
       drag = { moved: false, sx: e.clientX, sy: e.clientY };
       g.setPointerCapture(e.pointerId);
     });
@@ -585,8 +704,8 @@
       if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
       drag.moved = true;
       const p = svgPoint(svg, e);
-      state.positions.set(name, { x: Math.max(30, Math.min(VIEW_W - 30, p.x)), y: Math.max(30, Math.min(VIEW_H - 50, p.y)) });
-      renderCanvas();
+      const lim = (v, max) => Math.max(-max, Math.min(2 * max, v));
+      moveNode(g, name, { x: lim(p.x, VIEW_W), y: lim(p.y, VIEW_H) });
     });
     const end = () => {
       if (!drag) return;
@@ -1005,17 +1124,183 @@
     el.classList.toggle('late', left < 0);
   }
 
+  // ------------------------------------------------------------------ disposition : zones, tailles, réglages
+
+  const UI_DEFAULTS = {
+    sideW: 280, panelW: 380, consoleH: 200,
+    hideSide: false, hidePanel: false, hideConsole: false, focus: false,
+    font: 1, density: 'normal',
+  };
+  state.ui = { ...UI_DEFAULTS, ...(store('netiv.ui') || {}) };
+
+  /** Bornes de chaque taille, recalculées selon la fenêtre. */
+  function bounds(key) {
+    switch (key) {
+      case 'sideW': return [200, Math.max(220, Math.min(560, window.innerWidth * 0.4))];
+      case 'panelW': return [280, Math.max(300, Math.min(820, window.innerWidth * 0.55))];
+      default: return [80, Math.max(120, window.innerHeight * 0.7)];
+    }
+  }
+
+  function clampSize(key, v) {
+    const [lo, hi] = bounds(key);
+    return Math.round(Math.max(lo, Math.min(hi, v)));
+  }
+
+  function applyUi() {
+    const ui = state.ui;
+    const root = document.documentElement.style;
+    root.setProperty('--side-w', `${clampSize('sideW', ui.sideW)}px`);
+    root.setProperty('--panel-w', `${clampSize('panelW', ui.panelW)}px`);
+    root.setProperty('--console-h', `${clampSize('consoleH', ui.consoleH)}px`);
+    root.setProperty('--font-scale', String(ui.font));
+    document.body.classList.toggle('compact', ui.density === 'compact');
+    const layoutEl = $('.layout');
+    layoutEl.classList.toggle('hide-side', ui.hideSide);
+    layoutEl.classList.toggle('hide-panel', ui.hidePanel);
+    layoutEl.classList.toggle('hide-console', ui.hideConsole);
+    layoutEl.classList.toggle('focus', ui.focus);
+    $('#vb-side').setAttribute('aria-pressed', String(!ui.hideSide && !ui.focus));
+    $('#vb-panel').setAttribute('aria-pressed', String(!ui.hidePanel && !ui.focus));
+    $('#vb-console').setAttribute('aria-pressed', String(!ui.hideConsole && !ui.focus));
+    $('#vb-focus').setAttribute('aria-pressed', String(ui.focus));
+    for (const b of $$('#font-seg button')) b.setAttribute('aria-pressed', String(+b.dataset.font === ui.font));
+    for (const b of $$('#density-seg button')) b.setAttribute('aria-pressed', String(b.dataset.density === ui.density));
+    $('#console-size').value = String(clampSize('consoleH', ui.consoleH));
+    for (const [id, key] of [['#split-side', 'sideW'], ['#split-panel', 'panelW'], ['#split-console', 'consoleH']]) {
+      const [lo, hi] = bounds(key);
+      const el = $(id);
+      el.setAttribute('aria-valuemin', String(Math.round(lo)));
+      el.setAttribute('aria-valuemax', String(Math.round(hi)));
+      el.setAttribute('aria-valuenow', String(clampSize(key, ui[key])));
+    }
+  }
+
+  function setUi(patch) {
+    Object.assign(state.ui, patch);
+    applyUi();
+    store('netiv.ui', state.ui);
+  }
+
+  /** Affiche / masque une zone. Quitter le mode « schéma seul » d'abord. */
+  function toggleZone(flag) {
+    if (state.ui.focus) { setUi({ focus: false, [flag]: false }); return; }
+    setUi({ [flag]: !state.ui[flag] });
+  }
+
+  /**
+   * Poignée de redimensionnement. `sign` : +1 si glisser vers la droite / le
+   * bas agrandit la zone, −1 sinon.
+   */
+  function initSplitter(el, key, axis, sign) {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const start = axis === 'x' ? e.clientX : e.clientY;
+      const base = clampSize(key, state.ui[key]);
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('dragging');
+      document.body.classList.add('resizing', axis === 'x' ? 'col' : 'row');
+      const move = (ev) => {
+        const d = (axis === 'x' ? ev.clientX : ev.clientY) - start;
+        state.ui[key] = clampSize(key, base + sign * d);
+        applyUi();
+      };
+      const up = () => {
+        el.removeEventListener('pointermove', move);
+        el.classList.remove('dragging');
+        document.body.classList.remove('resizing', 'col', 'row');
+        store('netiv.ui', state.ui);
+      };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up, { once: true });
+      el.addEventListener('pointercancel', up, { once: true });
+    });
+    el.addEventListener('dblclick', () => setUi({ [key]: UI_DEFAULTS[key] }));
+    el.addEventListener('keydown', (e) => {
+      const grow = axis === 'x' ? { ArrowRight: 1, ArrowLeft: -1 } : { ArrowDown: 1, ArrowUp: -1 };
+      if (e.key in grow) {
+        e.preventDefault();
+        setUi({ [key]: clampSize(key, state.ui[key] + grow[e.key] * sign * (e.shiftKey ? 64 : 16)) });
+      } else if (e.key === 'Enter' || e.key === 'Home') {
+        e.preventDefault();
+        setUi({ [key]: UI_DEFAULTS[key] });
+      }
+    });
+  }
+
+  async function openHelp() {
+    const dlg = $('#help-dialog');
+    if (state.current && !state.helpText) {
+      try {
+        const r = await api('POST', `/api/labs/${state.current}/exec`, { line: 'help' });
+        state.helpText = (r.output || '').replace(/\n+$/, '');
+      } catch (_) { /* l'aide des raccourcis suffit */ }
+    }
+    if (state.helpText) $('#help-commands').textContent = state.helpText;
+    if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+  }
+
+  function initLayout() {
+    applyUi();
+    initSplitter($('#split-side'), 'sideW', 'x', 1);
+    initSplitter($('#split-panel'), 'panelW', 'x', -1);
+    initSplitter($('#split-console'), 'consoleH', 'y', -1);
+
+    $('#vb-side').addEventListener('click', () => toggleZone('hideSide'));
+    $('#vb-panel').addEventListener('click', () => toggleZone('hidePanel'));
+    $('#vb-console').addEventListener('click', () => toggleZone('hideConsole'));
+    $('#vb-focus').addEventListener('click', () => setUi({ focus: !state.ui.focus }));
+
+    for (const b of $$('#font-seg button')) b.addEventListener('click', () => setUi({ font: +b.dataset.font }));
+    for (const b of $$('#density-seg button')) b.addEventListener('click', () => setUi({ density: b.dataset.density }));
+    $('#console-size').addEventListener('input', (e) => setUi({ consoleH: +e.target.value, hideConsole: false }));
+    $('#layout-reset').addEventListener('click', () => { setUi({ ...UI_DEFAULTS }); fitView(); });
+    $('#help-btn').addEventListener('click', openHelp);
+
+    // Le menu Affichage se ferme en cliquant ailleurs ou avec Échap.
+    const menu = $('#view-menu');
+    document.addEventListener('pointerdown', (e) => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); return; }
+      const t = e.target;
+      const typing = t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (typing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
+      const actions = {
+        '[': () => toggleZone('hideSide'),
+        ']': () => toggleZone('hidePanel'),
+        '`': () => toggleZone('hideConsole'),
+        f: () => setUi({ focus: !state.ui.focus }),
+        F: () => setUi({ focus: !state.ui.focus }),
+        '+': () => zoomAt(1.25),
+        '=': () => zoomAt(1.25),
+        '-': () => zoomAt(0.8),
+        0: fitView,
+        '?': openHelp,
+      };
+      const act = actions[e.key];
+      if (act) { e.preventDefault(); act(); }
+    });
+
+    // Les bornes dépendent de la taille de la fenêtre.
+    let t = null;
+    window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(applyUi, 120); });
+  }
+
   // ------------------------------------------------------------------ amorçage
 
   function wire() {
     initTheme();
+    initLayout();
+    initCanvasControls();
     $('#profile-chip').addEventListener('click', openProfile);
 
     for (const b of $$('.tabs button')) b.addEventListener('click', () => selectTab(b.dataset.tab));
-    for (const b of $$('.seg button')) {
+    for (const b of $$('.side .seg button')) {
       b.addEventListener('click', () => {
         state.libTab = b.dataset.lib;
-        for (const x of $$('.seg button')) x.setAttribute('aria-selected', String(x === b));
+        for (const x of $$('.side .seg button')) x.setAttribute('aria-selected', String(x === b));
         renderLibrary();
       });
     }

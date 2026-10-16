@@ -328,8 +328,9 @@ impl IpNode {
         trace_id: TraceId,
     ) -> Option<(Route, Ipv4Addr)> {
         let decision = route::lookup(ctx.ifaces, &self.static_routes, self.gateway, dst);
-        out.trace(Some(trace_id), TraceKind::RouteLookup(decision.clone()));
-        let Some(route) = decision.chosen_route().copied() else {
+        let chosen = decision.chosen_route().copied();
+        out.trace(Some(trace_id), TraceKind::RouteLookup(decision));
+        let Some(route) = chosen else {
             out.trace(
                 Some(trace_id),
                 TraceKind::Dropped {
@@ -1301,8 +1302,9 @@ impl IpNode {
         );
 
         let decision = route::lookup(ctx.ifaces, &self.static_routes, self.gateway, packet.dst);
-        out.trace(Some(tid), TraceKind::RouteLookup(decision.clone()));
-        match decision.chosen_route().copied() {
+        let chosen = decision.chosen_route().copied();
+        out.trace(Some(tid), TraceKind::RouteLookup(decision));
+        match chosen {
             Some(route) => self.emit(ctx, out, route, packet, tid),
             None => {
                 out.trace(

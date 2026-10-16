@@ -162,6 +162,30 @@ impl Simulation {
         }
     }
 
+    /// Copie de la simulation **sans** sa file d'événements ni sa trace.
+    ///
+    /// Bien moins coûteux que `clone()` après une longue session : la trace
+    /// peut compter des centaines de milliers d'événements. Le reste de l'état
+    /// (horloge, caches, sessions) est copié tel quel ; voir
+    /// [`Simulation::fresh_clone`] pour une copie remise à zéro.
+    pub(crate) fn clone_without_history(&self) -> Simulation {
+        Simulation {
+            seed: self.seed,
+            now: self.now,
+            queue: EventQueue::new(),
+            rng: self.rng.clone(),
+            event_limit: self.event_limit,
+            processed: self.processed,
+            devices: self.devices.clone(),
+            links: self.links.clone(),
+            names: self.names.clone(),
+            trace: TraceLog::default(),
+            faults: self.faults.clone(),
+            next_trace: self.next_trace,
+            next_mac: self.next_mac,
+        }
+    }
+
     // ------------------------------------------------------------------
     // Lecture
     // ------------------------------------------------------------------
@@ -184,6 +208,12 @@ impl Simulation {
     /// Nombre d'événements déjà traités.
     pub fn processed(&self) -> u64 {
         self.processed
+    }
+
+    /// Vide le journal de trace et rend ses événements, sans les copier
+    /// (utile aux sondes qui jettent la simulation ensuite).
+    pub fn take_trace(&mut self) -> Vec<crate::trace::TraceEvent> {
+        self.trace.take()
     }
 
     /// Journal de trace.

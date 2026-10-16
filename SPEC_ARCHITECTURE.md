@@ -696,3 +696,15 @@ Diagnostic +40, correction +40, temps +20 (décroissance linéaire sur le temps 
 ### Limites connues
 - L'interface web n'est validée que par tests de l'API et un smoke test navigateur ; sa mise en page n'est pas testée automatiquement.
 - Pas de vieillissement ARP/MAC ; pas de STP (une boucle L2 n'est pas gérée).
+
+## Annexe C — v0.3 : performance et interface
+
+| Sujet | Choix | Raison |
+|---|---|---|
+| Index de trace | `TraceLog` tient `TraceId → positions`, reconstruit à la désérialisation, ignoré par l'égalité | `by_trace` en O(taille de la transaction), utilisé par le Packet Journey, l'API et le diagnostic. |
+| Copie neuve | `fresh_clone` copie la configuration sans la trace ni la file | Une sonde coûtait O(longueur de la session) : 15 s pour un score de santé après 2 000 pings. |
+| Sondes parallèles | `netiv-diagnostics::parallel::par_map` (`std::thread::scope`, aucune dépendance), ordre des résultats conservé | Sondes indépendantes : résultat identique quel que soit le nombre de threads (testé). Le moteur reste mono-thread. |
+| Analyseur de sécurité | pings préchauffés en parallèle et mémorisés avec le chemin parcouru | Le même ping servait deux fois (joignabilité puis routeurs traversés). |
+| `Box` des grosses variantes de trace | **non retenu** | Événement de 144 → 96 octets, mais mémoire maximale mesurée en hausse. |
+| Mesure | `netiv bench` (réseau généré, graine fixe) | Référence reproductible avant / après ; chiffres dans `docs/performance.md`. |
+| Interface | grille CSS pilotée par variables (`--side-w`, `--panel-w`, `--console-h`, `--font-scale`), poignées `role="separator"` utilisables au clavier, zoom par `viewBox`, réglages en `localStorage` (protégé par `try/catch`) | Pas de framework ni d'étape de build ; la page reste correcte sans stockage. |

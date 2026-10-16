@@ -32,7 +32,9 @@ impl Session {
                 let title = if title.is_empty() {
                     self.name.clone()
                 } else {
-                    title.join(" ")
+                    // « lab export f.netiv "Mon titre" » : les guillemets ne font
+                    // pas partie du titre.
+                    title.join(" ").trim_matches('"').to_string()
                 };
                 let bundle = Bundle::new(
                     BundleMeta {

@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-analysis"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "netiv-core",
  "netiv-diagnostics",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-api"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "http-body-util",
@@ -428,13 +428,14 @@ dependencies = [
 
 [[package]]
 name = "netiv-bin"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "netiv-analysis",
  "netiv-api",
  "netiv-cli",
  "netiv-core",
+ "netiv-security",
  "netiv-topology",
  "serde_yaml_ng",
  "tokio",
@@ -442,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-chaos"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "netiv-core",
  "netiv-diagnostics",
@@ -453,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-cli"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "netiv-analysis",
  "netiv-chaos",
@@ -469,7 +470,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-core"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -478,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-diagnostics"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "netiv-core",
  "netiv-topology",
@@ -487,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-education"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "netiv-chaos",
  "netiv-core",
@@ -503,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-security"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "netiv-core",
  "netiv-diagnostics",
@@ -516,7 +517,7 @@ dependencies = [
 
 [[package]]
 name = "netiv-topology"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "netiv-core",
  "serde",

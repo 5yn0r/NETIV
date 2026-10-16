@@ -323,7 +323,7 @@ impl Simulation {
     /// de départ des sondes (diagnostic, what-if) : le résultat ne dépend pas
     /// de ce qui s'est passé avant.
     pub fn fresh_clone(&self) -> Simulation {
-        let mut sim = self.clone();
+        let mut sim = self.clone_without_history();
         sim.reset_runtime();
         sim
     }
