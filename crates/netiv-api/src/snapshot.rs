@@ -84,12 +84,15 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
             "score": c.score,
         })
     });
+    let edit_lock = session.edit_lock();
     let Some(sim) = session.simulation() else {
         return json!({
             "id": id, "name": null, "devices": [], "links": [], "time_us": 0,
             "pending": 0, "trace_len": 0, "challenge": challenge,
+            "editable": edit_lock.is_none(), "edit_lock": edit_lock,
         });
     };
+    let positions = session.positions();
     let devices: Vec<Value> = sim
         .devices()
         .iter()
@@ -120,6 +123,7 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
                 "ifaces": ifaces,
                 "forwarding": forwarding,
                 "filtered": filtered,
+                "pos": positions.get(&d.name),
             })
         })
         .collect();
@@ -148,6 +152,8 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
         "devices": devices,
         "links": links,
         "challenge": challenge,
+        "editable": edit_lock.is_none(),
+        "edit_lock": edit_lock,
     })
 }
 

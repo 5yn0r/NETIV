@@ -9,6 +9,7 @@
 //!   n'empêchent rien : un laboratoire de dépannage contient volontairement
 //!   des réseaux mal configurés.
 
+pub mod autoconf;
 pub mod generate;
 
 use std::collections::BTreeMap;
@@ -82,7 +83,14 @@ pub struct DeviceDef {
     /// Filtrage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acl: Option<AclDef>,
+    /// Position sur le schéma de l'interface web (`[x, y]`). Sans effet sur
+    /// la simulation ; voyage avec le lab pour qu'il s'ouvre à l'identique.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pos: Option<[i32; 2]>,
 }
+
+/// Positions des équipements sur le schéma, par nom.
+pub type Layout = BTreeMap<String, [i32; 2]>;
 
 /// Une interface.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -227,6 +235,8 @@ pub struct Loaded {
     pub sim: Simulation,
     /// Problèmes de configuration non bloquants.
     pub warnings: Vec<String>,
+    /// Positions sur le schéma déclarées dans le fichier.
+    pub layout: Layout,
 }
 
 /// Charge une topologie depuis un texte YAML.
@@ -373,6 +383,7 @@ pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
         name: def.network.name.clone(),
         sim,
         warnings,
+        layout: layout_of(def),
     })
 }
 
@@ -838,6 +849,24 @@ fn end_name(sim: &Simulation, (d, i): (DeviceId, IfaceId)) -> String {
 /// Version courante du format `.netiv`.
 pub const NETIV_FORMAT_VERSION: u32 = 1;
 
+/// Positions déclarées dans une topologie.
+pub fn layout_of(def: &TopologyDef) -> Layout {
+    def.devices
+        .iter()
+        .filter_map(|d| d.pos.map(|p| (d.name.clone(), p)))
+        .collect()
+}
+
+/// Reporte des positions sur les équipements d'une topologie (ceux qui
+/// n'en ont pas gardent `None`).
+pub fn apply_layout(def: &mut TopologyDef, layout: &Layout) {
+    for d in &mut def.devices {
+        if let Some(p) = layout.get(&d.name) {
+            d.pos = Some(*p);
+        }
+    }
+}
+
 /// Décrit l'état **courant** d'une simulation (y compris les pannes déjà
 /// injectées) sous forme de topologie. Les équipements et interfaces sont
 /// émis dans l'ordre de création : recharger le résultat redonne les mêmes
@@ -917,6 +946,7 @@ pub fn export(sim: &Simulation, name: &str) -> TopologyDef {
                 services,
                 arp,
                 acl,
+                pos: None,
             }
         })
         .collect();

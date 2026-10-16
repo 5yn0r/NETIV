@@ -421,6 +421,7 @@ dependencies = [
  "netiv-topology",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "tempfile",
  "tokio",
  "tower",

@@ -2,4 +2,4 @@
 
 mod session;
 
-pub use session::{ChallengeInfo, CliError, Flow, ManualClock, Session};
+pub use session::{ChallengeInfo, CliError, EditError, Flow, ManualClock, Session};

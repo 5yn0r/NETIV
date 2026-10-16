@@ -243,6 +243,7 @@ impl Session {
         }
         self.sim = Some(sim);
         self.name = challenge.id.clone();
+        self.layout = Layout::new();
         self.chaos = None;
         self.baseline = None;
         self.last_cause = None;

@@ -109,6 +109,7 @@ Chaque modification est tracée (`log`) : on voit dans la trace *quand* la confi
 | `health` | Score de santé en 6 catégories (formules : annexe B de la spec). | |
 | `docs md\|json\|yaml [fichier]` | Documentation générée du réseau. | `docs md reseau.md` |
 | `topology generate --type <type> --routers N --hosts M [--seed S] [--save f.yaml]` | Génère et charge un réseau (`lan`, `enterprise`, `campus`, `datacenter`, `isp`, `hybrid`, `cyber-range`). | `topology generate --type campus --routers 5 --hosts 20` |
+| `topology autoconfig` | Complète l'adressage d'un réseau dessiné : un réseau par segment (/30 entre deux routeurs, /24 sinon), IP des interfaces vides, passerelles, routes statiques par plus court chemin. N'écrase jamais une valeur existante. Refusé pendant un défi. | `topology autoconfig` |
 | `challenge generate --topic T --difficulty facile\|moyen\|difficile [--seed N] [--save f.netiv]` | Génère un défi auto-validé et le lance. | `challenge generate --topic routing --difficulty difficile` |
 
 ## Sécurité

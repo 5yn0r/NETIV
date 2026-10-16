@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use netiv_education::profile::leaderboard;
-use netiv_topology::{Bundle, BundleMeta, export};
+use netiv_topology::{Bundle, BundleMeta};
 
 use super::*;
 
@@ -28,7 +28,7 @@ impl Session {
                 self.load_yaml(&text, out)
             }
             ["export", file, title @ ..] => {
-                let sim = self.sim()?;
+                let topology = self.current_def()?;
                 let title = if title.is_empty() {
                     self.name.clone()
                 } else {
@@ -42,7 +42,7 @@ impl Session {
                         description: String::new(),
                         author: self.profile.name.clone(),
                     },
-                    export(sim, &self.name),
+                    topology,
                 );
                 self.write_text(file, &bundle.to_yaml()?)?;
                 writeln!(

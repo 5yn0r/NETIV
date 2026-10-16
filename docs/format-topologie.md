@@ -62,6 +62,7 @@ Exemples complets dans le dépôt : [`examples/mvp.yaml`](../examples/mvp.yaml) 
 | `services` | Services à l'écoute : `{ proto: tcp\|udp, port: 80, name: http }`. |
 | `arp` | Entrées ARP statiques : `{ ip: <ip>, mac: 02:00:00:00:00:01 }`. |
 | `acl` | Filtrage (voir ci-dessous). |
+| `pos` | Position sur le schéma de l'interface web : `[x, y]`. Facultatif, sans effet sur la simulation ; écrit par l'éditeur pour qu'un lab partagé s'ouvre avec la même disposition. |
 
 Comportement des types :
 

@@ -161,6 +161,7 @@ impl Session {
         let now = (self.clock)();
         let (run, sim) = RangeRun::start(scenario.clone(), now).map_err(CliError)?;
         self.sim = Some(sim);
+        self.layout = Layout::new();
         self.name = scenario.id.clone();
         self.chaos = None;
         self.baseline = None;

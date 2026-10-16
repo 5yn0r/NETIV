@@ -41,6 +41,11 @@ L'interface web n'utilise que cette API : tout ce qu'elle fait peut être script
 | GET | `/api/labs/{id}/security` | Analyse de sécurité |
 | GET | `/api/labs/{id}/docs?format=md\|json\|yaml` | Documentation générée |
 | POST | `/api/labs/{id}/what-if` | Impact d'un changement |
+| GET | `/api/labs/{id}/topology?format=json\|yaml\|netiv` | Topologie actuelle (éditeur ; texte à télécharger) |
+| PUT | `/api/labs/{id}/topology` | Remplace le réseau (éditeur) |
+| POST | `/api/labs/{id}/topology/validate` | Vérifie une topologie sans rien changer |
+| POST | `/api/labs/{id}/topology/autoconfig` | Adressage automatique |
+| PUT | `/api/labs/{id}/positions` | Positions des équipements sur le schéma |
 
 ### Créer un lab
 
@@ -48,6 +53,7 @@ Le corps contient **exactement une** source :
 
 | Corps | Effet |
 |---|---|
+| `{"empty": "mon-reseau"}` | Réseau vide, à construire dans l'éditeur |
 | `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`) |
 | `{"yaml": "network: …"}` | Topologie fournie (YAML, JSON ou `.netiv`) |
 | `{"generate": {"type": "campus", "routers": 5, "hosts": 12, "seed": 1}}` | Topologie générée |
@@ -117,6 +123,31 @@ Chaque événement : `seq`, `time`, `time_us`, `device`, `trace_id`, `kind` (cat
 `app`, `frame_sent`, `frame_received`, `switch`, `arp`, `route`, `drop`, `config`, `fault`…),
 `text` (description lisible) et `edge` (`{"from": "R1", "to": "R2"}` quand une trame traverse un
 câble, sinon `null` ; c'est ce qui anime le paquet sur le schéma).
+
+### Éditeur de réseau
+
+L'éditeur travaille sur la **description** du réseau (même format que les fichiers YAML, en JSON) :
+
+```bash
+# Lire
+curl -s http://127.0.0.1:8787/api/labs/lab-1/topology            # {"topology": {...}}
+# Vérifier sans appliquer
+curl -s -X POST http://127.0.0.1:8787/api/labs/lab-1/topology/validate \
+     -H 'Content-Type: application/json' -d '{"topology": {...}}'   # {"errors": [], "warnings": [...]}
+# Appliquer
+curl -s -X PUT http://127.0.0.1:8787/api/labs/lab-1/topology \
+     -H 'Content-Type: application/json' -d '{"topology": {...}}'   # {"warnings": [...], "snapshot": {...}}
+```
+
+- Appliquer **reconstruit** le lab : la trace repart de zéro (environ 1 ms pour 150 équipements).
+- Topologie invalide : 400, avec les problèmes dans `error` ; le lab garde son état précédent.
+- Pendant un défi ou un cyber range : **409** (`edit_lock` dans l'instantané en donne la raison,
+  `editable` vaut `false`).
+- Au plus 2 000 équipements et 4 000 câbles par topologie.
+- `autoconfig` renvoie `{"changes": ["PC1:eth0 → 10.0.1.10/24", …], "snapshot": …}`.
+- `PUT …/positions` avec `{"positions": {"PC1": [120, 80]}}` mémorise la disposition sans
+  reconstruire. Les positions sont aussi renvoyées dans l'instantané (`devices[].pos`) et exportées
+  dans les fichiers.
 
 ### What-if
 

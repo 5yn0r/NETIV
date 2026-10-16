@@ -5,6 +5,8 @@ use std::fmt;
 use std::io::{self, Write};
 use std::net::Ipv4Addr;
 
+mod build;
+pub use build::EditError;
 mod edu;
 pub use edu::ChallengeInfo;
 mod intel;
@@ -23,7 +25,7 @@ use netiv_core::{
 };
 use netiv_diagnostics::{Layer, Request, RootCause, diagnose, hints_for};
 use netiv_education::{ChallengeRun, Profile, RangeRun};
-use netiv_topology::{Loaded, load_any};
+use netiv_topology::{Layout, Loaded, load_any};
 
 /// Erreur affichable à l'utilisateur.
 #[derive(Debug)]
@@ -102,6 +104,7 @@ COMMANDES
     docs md|json|yaml [fichier]    documentation générée du réseau
     topology generate --type lan|enterprise|campus|datacenter|isp|hybrid|cyber-range
              --routers N --hosts M [--seed S] [--save fichier.yaml]   génère et charge un réseau
+    topology autoconfig            complète l'adressage : IP, passerelles, routes statiques
     challenge generate --topic T --difficulty facile|moyen|difficile [--seed N] [--save f.netiv]
     tutor <question>               explique une notion (gratuit) ou guide sur le challenge en cours
 
@@ -160,6 +163,8 @@ pub struct Session {
     range_run: Option<RangeRun>,
     clock: Box<dyn Fn() -> u64 + Send>,
     sandbox: bool,
+    /// Positions des équipements sur le schéma (interface web, labs partagés).
+    layout: Layout,
 }
 
 impl Default for Session {
@@ -178,6 +183,7 @@ impl Default for Session {
             range_run: None,
             clock: Box::new(system_seconds),
             sandbox: false,
+            layout: Layout::new(),
         }
     }
 }
@@ -310,6 +316,7 @@ impl Session {
                 name,
                 sim,
                 warnings,
+                layout,
             },
         ) = load_any(yaml)?;
         writeln!(
@@ -341,6 +348,7 @@ impl Session {
         }
         self.sim = Some(sim);
         self.name = name;
+        self.layout = layout;
         self.chaos = None;
         self.baseline = None;
         self.last_cause = None;

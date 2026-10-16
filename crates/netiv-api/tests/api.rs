@@ -909,3 +909,203 @@ async fn the_api_is_deterministic() {
     };
     assert_eq!(play().await, play().await);
 }
+
+// ------------------------------------------------------------------ éditeur de réseau
+
+async fn put(app: &Router, uri: &str, body: Value) -> Reply {
+    send(app, Method::PUT, uri, Some(body)).await
+}
+
+#[tokio::test]
+async fn a_network_is_built_from_scratch_in_the_editor() {
+    let app = app();
+    let id = create(&app, json!({ "empty": "atelier" })).await;
+    let snap = get(&app, &format!("/api/labs/{id}")).await.json;
+    assert_eq!(snap["name"], "atelier");
+    assert_eq!(snap["devices"].as_array().unwrap().len(), 0);
+    assert_eq!(snap["editable"], true);
+
+    // Deux postes, un switch, sans aucune adresse ; positions sur le schéma.
+    let topo = json!({
+        "network": { "name": "atelier", "seed": 1 },
+        "devices": [
+            { "name": "PC1", "type": "host", "interfaces": [{ "name": "eth0" }], "pos": [100, 200] },
+            { "name": "PC2", "type": "host", "interfaces": [{ "name": "eth0" }], "pos": [300, 200] },
+            { "name": "SW1", "type": "switch", "ports": 4, "pos": [200, 100] }
+        ],
+        "links": [
+            { "a": "PC1:eth0", "b": "SW1:port1" },
+            { "a": "PC2:eth0", "b": "SW1:port2" }
+        ]
+    });
+    let r = put(
+        &app,
+        &format!("/api/labs/{id}/topology"),
+        json!({ "topology": topo }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    let devices = r.json["snapshot"]["devices"].as_array().unwrap().clone();
+    assert_eq!(devices.len(), 3);
+    assert_eq!(devices[0]["pos"], json!([100, 200]));
+
+    // Adressage automatique, puis ping.
+    let r = post(
+        &app,
+        &format!("/api/labs/{id}/topology/autoconfig"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert!(!r.json["changes"].as_array().unwrap().is_empty());
+    let pc2 = r.json["snapshot"]["devices"][1]["ifaces"][0]["ip"]
+        .as_str()
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let out = exec(&app, &id, &format!("ping PC1 {pc2}")).await;
+    assert!(
+        out["output"].as_str().unwrap().contains("0 % de perte"),
+        "{out}"
+    );
+
+    // L'export garde les positions et l'adressage.
+    let t = get(&app, &format!("/api/labs/{id}/topology")).await.json;
+    assert_eq!(t["topology"]["devices"][2]["pos"], json!([200, 100]));
+    assert!(t["topology"]["devices"][0]["interfaces"][0]["ip"].is_string());
+    let netiv = get(&app, &format!("/api/labs/{id}/topology?format=netiv"))
+        .await
+        .json;
+    let text = netiv["text"].as_str().unwrap();
+    assert!(
+        text.contains("format_version: 1") && text.contains("pos:"),
+        "{text}"
+    );
+}
+
+#[tokio::test]
+async fn invalid_topologies_are_rejected_without_touching_the_lab() {
+    let app = app();
+    let id = create(&app, json!({ "builtin": "office" })).await;
+    let bad = json!({
+        "network": { "name": "x" },
+        "devices": [
+            { "name": "A", "type": "host" },
+            { "name": "A", "type": "host" }
+        ],
+        "links": [{ "a": "A:eth9", "b": "B:eth0" }]
+    });
+    let v = post(
+        &app,
+        &format!("/api/labs/{id}/topology/validate"),
+        json!({ "topology": bad }),
+    )
+    .await;
+    assert_eq!(v.status, StatusCode::OK);
+    assert!(
+        v.json["errors"].as_array().unwrap().len() >= 2,
+        "{}",
+        v.text
+    );
+
+    let r = put(
+        &app,
+        &format!("/api/labs/{id}/topology"),
+        json!({ "topology": bad }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert!(
+        r.json["error"]
+            .as_str()
+            .unwrap()
+            .contains("topologie invalide")
+    );
+    // Le lab n'a pas changé.
+    let snap = get(&app, &format!("/api/labs/{id}")).await.json;
+    assert_eq!(snap["name"], "office");
+    assert_eq!(snap["devices"].as_array().unwrap().len(), 6);
+
+    // Champ inconnu : refusé par la désérialisation.
+    let r = put(
+        &app,
+        &format!("/api/labs/{id}/topology"),
+        json!({ "topology": { "network": { "name": "x" }, "devices": [{ "name": "A", "type": "host", "gatway": "1.1.1.1" }] } }),
+    )
+    .await;
+    assert!(r.status.is_client_error());
+}
+
+#[tokio::test]
+async fn the_network_cannot_be_redrawn_during_a_challenge() {
+    let app = app();
+    let id = create(&app, json!({ "challenge": "beginner-01" })).await;
+    let snap = get(&app, &format!("/api/labs/{id}")).await.json;
+    assert_eq!(snap["editable"], false);
+    assert!(snap["edit_lock"].as_str().unwrap().contains("challenge"));
+    let topo = get(&app, &format!("/api/labs/{id}/topology")).await.json["topology"].clone();
+    let r = put(
+        &app,
+        &format!("/api/labs/{id}/topology"),
+        json!({ "topology": topo }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.text);
+    let r = post(
+        &app,
+        &format!("/api/labs/{id}/topology/autoconfig"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn positions_are_saved_without_rebuilding() {
+    let app = app();
+    let id = create(&app, json!({ "builtin": "office" })).await;
+    exec(&app, &id, "ping PC1 192.168.2.10").await;
+    let before = get(&app, &format!("/api/labs/{id}")).await.json["trace_len"].clone();
+    let r = put(
+        &app,
+        &format!("/api/labs/{id}/positions"),
+        json!({ "positions": { "PC1": [10, 20], "INCONNU": [1, 1] } }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    let snap = get(&app, &format!("/api/labs/{id}")).await.json;
+    assert_eq!(snap["trace_len"], before, "la trace est conservée");
+    let pc1 = snap["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["name"] == "PC1")
+        .unwrap()
+        .clone();
+    assert_eq!(pc1["pos"], json!([10, 20]));
+}
+
+#[tokio::test]
+async fn oversized_or_unnamed_networks_are_refused() {
+    let app = app();
+    assert_eq!(
+        post(&app, "/api/labs", json!({ "empty": "  " }))
+            .await
+            .status,
+        StatusCode::BAD_REQUEST
+    );
+    let id = create(&app, json!({ "empty": "gros" })).await;
+    let devices: Vec<Value> = (0..2_001)
+        .map(|i| json!({ "name": format!("H{i}"), "type": "host" }))
+        .collect();
+    let r = put(
+        &app,
+        &format!("/api/labs/{id}/topology"),
+        json!({ "topology": { "network": { "name": "gros" }, "devices": devices } }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert!(r.json["error"].as_str().unwrap().contains("trop grande"));
+}

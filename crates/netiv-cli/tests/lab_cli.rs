@@ -253,3 +253,61 @@ fn clock_is_shareable_between_threads() {
     });
     assert!(handle.join().unwrap().contains("0 % de perte"));
 }
+
+#[test]
+fn positions_travel_with_an_exported_lab() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("pos.netiv");
+    let mut s = Session::new();
+    s.load_yaml(&example("mvp.yaml"), &mut Vec::new()).unwrap();
+    let layout = [("PC1".to_string(), [12, 34]), ("R1".to_string(), [56, 78])]
+        .into_iter()
+        .collect();
+    s.set_positions(&layout);
+    run(&mut s, &format!("lab export {}", file.display()));
+
+    let mut other = Session::new();
+    run(&mut other, &format!("load {}", file.display()));
+    assert_eq!(other.positions().get("PC1"), Some(&[12, 34]));
+    assert_eq!(other.positions().get("R1"), Some(&[56, 78]));
+    assert_eq!(other.positions().get("PC2"), None);
+}
+
+#[test]
+fn topology_autoconfig_addresses_a_drawn_network() {
+    let yaml = r#"
+network: { name: dessin }
+devices:
+  - { name: PC1, type: host, interfaces: [{ name: eth0 }] }
+  - { name: R1, type: router, interfaces: [{ name: eth0 }, { name: eth1 }] }
+  - { name: SRV, type: server, interfaces: [{ name: eth0 }] }
+links:
+  - { a: "PC1:eth0", b: "R1:eth0" }
+  - { a: "R1:eth1", b: "SRV:eth0" }
+"#;
+    let mut s = Session::new();
+    s.load_yaml(yaml, &mut Vec::new()).unwrap();
+    let out = run(&mut s, "topology autoconfig");
+    assert!(out.contains("PC1 : passerelle"), "{out}");
+    assert!(run(&mut s, "topology autoconfig").contains("Rien à compléter"));
+    let srv = run(&mut s, "show ifaces SRV");
+    let ip = srv
+        .split_whitespace()
+        .find(|w| w.contains('/') && w.starts_with("10."))
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(run(&mut s, &format!("ping PC1 {ip}")).contains("0 % de perte"));
+}
+
+#[test]
+fn the_topology_is_locked_during_a_challenge() {
+    let mut s = Session::new();
+    run(&mut s, "challenge start beginner-01");
+    assert!(s.edit_lock().is_some());
+    assert!(fail(&mut s, "topology autoconfig").contains("challenge est en cours"));
+    run(&mut s, "challenge giveup");
+    assert!(s.edit_lock().is_none());
+}

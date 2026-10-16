@@ -144,6 +144,7 @@ fn device(name: &str, kind: &str, role: Option<&str>) -> DeviceDef {
         services: Vec::new(),
         arp: Vec::new(),
         acl: None,
+        pos: None,
     }
 }
 
