@@ -157,6 +157,14 @@ async fn the_page_offers_a_flexible_layout() {
         r#"id="vb-focus""#,
         r#"id="z-fit""#,
         r#"id="help-dialog""#,
+        // Éditeur de réseau.
+        r#"id="build-toggle""#,
+        r#"id="buildbar""#,
+        r#"data-kind="router""#,
+        r#"id="bt-cable""#,
+        r#"id="bt-auto""#,
+        r#"id="build-issues""#,
+        r#"id="file-import""#,
     ] {
         assert!(page.contains(needle), "{needle} absent de la page");
     }

@@ -125,6 +125,7 @@ netiv> answer WEB01 port-scan         # le coupable et son comportement
 | Schéma seul | bouton ⛶ | `F` |
 | Zoom du schéma | molette, boutons + − ⤢ | `+` `−` `0` |
 | Taille du texte, densité, hauteur de console | menu **Affichage** | — |
+| Mode Construire (éditeur) | bouton **✎ Construire** | `B` |
 | Aide et liste des commandes | bouton **?** | `?` |
 
 La disposition, le zoom et les positions des équipements sont mémorisés **dans ton navigateur**
@@ -136,7 +137,39 @@ Le serveur n'écoute que sur `127.0.0.1` ; une autre adresse est refusée sans `
 (l'API n'a pas d'authentification). Les sessions web ne peuvent pas lire ni écrire de fichiers
 sur le disque. Détails dans [api.md](api.md).
 
-## 7. Créer et partager ses réseaux
+## 7. Construire un réseau dans le navigateur
+
+Dans le catalogue : **＋ Nouveau réseau** (ou, sur un lab ouvert, le bouton **✎ Construire**,
+touche `B`). Le mode Construire est indisponible pendant un défi ou un cyber range.
+
+1. **Ajouter** : clic sur un équipement de la palette (il se place à un endroit libre), ou
+   glisser-déposer sur le schéma. Les noms (`PC1`, `R1`, `SW1`…) et les interfaces sont prêts.
+2. **Câbler** : outil **Câble** (touche `C`), puis un clic sur chaque extrémité. Une interface
+   libre est choisie de chaque côté (un routeur en reçoit une nouvelle si besoin) ; on peut la
+   changer en cliquant sur le câble.
+3. **Adresser automatiquement** : IP de chaque segment (/24, ou /30 entre deux routeurs),
+   passerelles et routes statiques manquantes. Rien de ce que tu as déjà écrit n'est remplacé.
+4. **Configurer** : un clic sur un équipement ouvre ses réglages dans le panneau de droite (nom,
+   rôle, interfaces, VLAN des ports de switch, passerelle, routes, services, filtrage). Chaque
+   champ s'applique quand tu le quittes ou appuies sur Entrée.
+5. **Tester** : la barre d'outils (ping, curl) et la console restent disponibles.
+
+| Action | Comment |
+|---|---|
+| Supprimer l'équipement ou le câble sélectionné | `Suppr`, ou le bouton 🗑 |
+| Annuler / rétablir | `Ctrl+Z` / `Ctrl+Y` (100 étapes), ou ↶ ↷ |
+| Revenir à l'outil Sélection, annuler un câble en cours | `V`, `Échap` |
+| Télécharger | ⤓ .netiv (lab partageable) ou ⤓ .yaml (topologie seule) |
+| Rouvrir un fichier | **Importer un fichier** dans le catalogue |
+
+Chaque modification reconstruit le réseau : **la trace repart de zéro**. Une modification
+invalide (adresse mal écrite, nom en double…) n'est pas appliquée. Elle reste en **brouillon**
+avec la liste des erreurs, et les équipements concernés sont marqués en rouge ; un clic sur une
+erreur sélectionne l'équipement. Les avertissements (IP en double, passerelle hors réseau…) sont
+signalés sans bloquer, puisqu'un lab de dépannage peut être cassé exprès. Les positions des
+équipements sont enregistrées avec le lab.
+
+## 8. Créer et partager ses réseaux
 
 - Écrire un réseau à la main : [format-topologie.md](format-topologie.md), puis `netiv validate mon-reseau.yaml`.
 - En générer un : `netiv generate --type campus --routers 5 --hosts 20 --seed 1 --out campus.yaml`.
