@@ -34,7 +34,7 @@ L'interface web n'utilise que cette API : tout ce qu'elle fait peut être script
 | DELETE | `/api/labs/{id}` | Ferme le lab |
 | POST | `/api/labs/{id}/exec` | Exécute une ligne de commande NETIV |
 | GET | `/api/labs/{id}/trace?since=N&limit=M` | Événements de trace à partir de l'index `N` (500 par défaut, 2 000 au plus) |
-| GET | `/api/labs/{id}/transactions` | Les 50 derniers échanges (ping, curl, udp) et leur issue |
+| GET | `/api/labs/{id}/transactions` | Les 50 derniers échanges (ping, curl, udp, DHCP, DNS) et leur issue |
 | GET | `/api/labs/{id}/journey/{tid}` | Parcours d'un échange : étapes animables + texte |
 | GET | `/api/labs/{id}/device/{name}` | Tables d'un équipement (interfaces, routes, ARP, MAC, ACL, services) |
 | GET | `/api/labs/{id}/health` | Score de santé par catégorie |
@@ -54,7 +54,7 @@ Le corps contient **exactement une** source :
 | Corps | Effet |
 |---|---|
 | `{"empty": "mon-reseau"}` | Réseau vide, à construire dans l'éditeur |
-| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`) |
+| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`, `dhcp`) |
 | `{"yaml": "network: …"}` | Topologie fournie (YAML, JSON ou `.netiv`) |
 | `{"generate": {"type": "campus", "routers": 5, "hosts": 12, "seed": 1}}` | Topologie générée |
 | `{"challenge": "beginner-01"}` | Défi livré |
@@ -81,8 +81,10 @@ Renvoyé par `GET /api/labs/{id}`, à la création et après chaque commande :
   "pending": 0, "trace_len": 66,
   "devices": [
     { "name": "PC1", "kind": "host", "role": "user", "forwarding": false, "filtered": false,
+      "dhcp_server": null, "dns_server": null,
       "ifaces": [ { "name": "eth0", "ip": "192.168.1.10/24", "mac": "02:4E:49:00:00:01",
-                    "up": true, "link_up": true, "peer": "SW1:port1" } ] }
+                    "up": true, "link_up": true, "peer": "SW1:port1",
+                    "dhcp": false, "dhcp_relay": null } ] }
   ],
   "links": [
     { "a": "PC1:eth0", "a_device": "PC1", "b": "SW1:port1", "b_device": "SW1",
@@ -120,7 +122,8 @@ au plus 1 000 caractères.
 ### Événements de trace
 
 Chaque événement : `seq`, `time`, `time_us`, `device`, `trace_id`, `kind` (catégorie :
-`app`, `frame_sent`, `frame_received`, `switch`, `arp`, `route`, `drop`, `config`, `fault`…),
+`app`, `frame_sent`, `frame_received`, `switch`, `arp`, `route`, `dhcp`, `dns`, `drop`, `config`,
+`fault`),
 `text` (description lisible) et `edge` (`{"from": "R1", "to": "R2"}` quand une trame traverse un
 câble, sinon `null` ; c'est ce qui anime le paquet sur le schéma).
 

@@ -121,6 +121,66 @@ pub fn describe(sim: &Simulation, ev: &TraceEvent) -> String {
         TraceKind::AclDecision { text, .. } => format!("filtrage : {text}"),
         TraceKind::FaultApplied { description } => format!("PANNE : {description}"),
         TraceKind::FaultRepaired { description } => format!("réparé : {description}"),
+        TraceKind::Dhcp { iface, event } => describe_dhcp(iface_name(sim, dev, *iface), event),
+        TraceKind::DnsLookup { name, server } => match server {
+            Some(srv) => format!("DNS : résolution de {name} auprès de {srv}"),
+            None => format!("DNS : résolution de {name}"),
+        },
+        TraceKind::DnsResult {
+            name,
+            outcome,
+            cached,
+        } => match outcome {
+            crate::dns::DnsOutcome::Resolved(ip) if *cached => {
+                format!("DNS : {name} = {ip} (cache)")
+            }
+            crate::dns::DnsOutcome::Resolved(ip) => format!("DNS : {name} = {ip}"),
+            other => format!("DNS : {name} → {other}"),
+        },
+        TraceKind::DnsAnswered { name, from, answer } => match answer {
+            Some(ip) => format!("serveur DNS : {name} = {ip} (question de {from})"),
+            None => format!("serveur DNS : {name} inconnu, NXDOMAIN (question de {from})"),
+        },
+    }
+}
+
+fn describe_dhcp(iface: &str, e: &crate::dhcp::DhcpEvent) -> String {
+    use crate::dhcp::DhcpEvent as E;
+    match e {
+        E::ClientDiscover { attempt } => {
+            format!("DHCP : cherche un serveur sur {iface} (tentative {attempt})")
+        }
+        E::ClientRequest { ip, server } => format!("DHCP : demande {ip} au serveur {server}"),
+        E::ClientBound(b) => {
+            let mut t = format!("DHCP : {iface} obtient {} (serveur {}", b.ip, b.server);
+            if let Some(g) = b.gateway {
+                let _ = write!(t, ", passerelle {g}");
+            }
+            if let Some(d) = b.dns {
+                let _ = write!(t, ", DNS {d}");
+            }
+            t.push(')');
+            t
+        }
+        E::ClientNak => "DHCP : demande refusée par le serveur, on recommence".to_string(),
+        E::ClientFailed { attempts } => {
+            format!(
+                "DHCP : aucun serveur n'a répondu sur {iface} après {attempts} tentative(s) — pas d'adresse"
+            )
+        }
+        E::ClientReleased { ip } => format!("DHCP : rend l'adresse {ip}"),
+        E::ServerOffer { ip, mac } => format!("serveur DHCP : propose {ip} à {mac}"),
+        E::ServerAck { ip, mac } => format!("serveur DHCP : attribue {ip} à {mac}"),
+        E::ServerNak { ip, mac } => format!("serveur DHCP : refuse {ip} à {mac}"),
+        E::ServerExhausted { network } => {
+            format!("serveur DHCP : plus aucune adresse libre dans {network}")
+        }
+        E::ServerNoPool { subnet } => {
+            format!("serveur DHCP : aucune plage pour le réseau de {subnet}")
+        }
+        E::ServerReleased { ip } => format!("serveur DHCP : {ip} libérée"),
+        E::Relayed { to } => format!("relais DHCP : transmet la demande au serveur {to}"),
+        E::RelayedBack { op } => format!("relais DHCP : rediffuse le {op} du serveur sur {iface}"),
     }
 }
 
@@ -182,10 +242,15 @@ fn message_identity(frame: &Frame) -> Option<(String, String)> {
             )
         }
         IpPayload::Udp(u) => (
-            "UDP".to_string(),
+            match &u.payload {
+                crate::packet::UdpPayload::Dhcp(m) => format!("DHCP {}", m.op),
+                crate::packet::UdpPayload::Dns(m) if m.response => "DNS réponse".to_string(),
+                crate::packet::UdpPayload::Dns(_) => "DNS question".to_string(),
+                crate::packet::UdpPayload::Text(_) => "UDP".to_string(),
+            },
             format!(
                 "UDP|{}:{}>{}:{}|{}",
-                p.src, u.src_port, p.dst, u.dst_port, u.data
+                p.src, u.src_port, p.dst, u.dst_port, u.payload
             ),
         ),
         IpPayload::Tcp(t) => (
@@ -298,6 +363,13 @@ pub fn journey(sim: &Simulation, id: TraceId) -> Result<String, NetivError> {
             )),
             TraceKind::UdpSent { dst, port } => {
                 Some(format!("udp {} → {dst}:{port}", device_name(sim, e.device)))
+            }
+            TraceKind::Dhcp {
+                event: crate::dhcp::DhcpEvent::ClientDiscover { .. },
+                ..
+            } => Some(format!("DHCP {}", device_name(sim, e.device))),
+            TraceKind::DnsLookup { name, .. } => {
+                Some(format!("DNS {} → {name}", device_name(sim, e.device)))
             }
             _ => None,
         })
@@ -416,7 +488,51 @@ pub fn inspect(sim: &Simulation, seq: u64) -> Result<String, NetivError> {
                 IpPayload::Udp(u) => {
                     let _ = writeln!(s, "  Port source : {}", u.src_port);
                     let _ = writeln!(s, "  Port dest.  : {}", u.dst_port);
-                    let _ = writeln!(s, "  Données     : {}", u.data);
+                    match &u.payload {
+                        crate::packet::UdpPayload::Text(t) => {
+                            let _ = writeln!(s, "  Données     : {t}");
+                        }
+                        crate::packet::UdpPayload::Dhcp(m) => {
+                            let _ = writeln!(s, "DHCP");
+                            let _ = writeln!(s, "  Type        : {}", m.op);
+                            let _ = writeln!(s, "  Échange     : xid {:#x}", m.xid);
+                            let _ = writeln!(s, "  Client      : {}", m.client_mac);
+                            let opt = |v: Option<std::net::Ipv4Addr>| {
+                                v.map_or("—".to_string(), |x| x.to_string())
+                            };
+                            let _ = writeln!(
+                                s,
+                                "  Adresse     : {}{}",
+                                opt(m.yiaddr),
+                                m.prefix.map_or(String::new(), |p| format!("/{p}"))
+                            );
+                            let _ = writeln!(s, "  Demandée    : {}", opt(m.requested));
+                            let _ = writeln!(s, "  Serveur     : {}", opt(m.server_id));
+                            let _ = writeln!(s, "  Relais      : {}", opt(m.giaddr));
+                            let _ = writeln!(s, "  Passerelle  : {}", opt(m.gateway));
+                            let _ = writeln!(s, "  DNS         : {}", opt(m.dns));
+                            if m.lease_s > 0 {
+                                let _ = writeln!(s, "  Bail        : {} s", m.lease_s);
+                            }
+                        }
+                        crate::packet::UdpPayload::Dns(m) => {
+                            let _ = writeln!(s, "DNS");
+                            let _ = writeln!(
+                                s,
+                                "  {}",
+                                if m.response { "Réponse" } else { "Question" }
+                            );
+                            let _ = writeln!(s, "  Identifiant : {}", m.id);
+                            let _ = writeln!(s, "  Nom         : {}", m.name);
+                            if m.response {
+                                let _ = writeln!(
+                                    s,
+                                    "  Résultat    : {}",
+                                    m.answer.map_or("NXDOMAIN".to_string(), |a| a.to_string())
+                                );
+                            }
+                        }
+                    }
                 }
                 IpPayload::Tcp(t) => {
                     let _ = writeln!(s, "  Port source : {}", t.src_port);
@@ -555,8 +671,14 @@ pub fn show_interfaces(sim: &Simulation, dev: DeviceId) -> Result<String, NetivE
         "{:<8} {:<19} {:<18} {:<8} CÂBLE",
         "NOM", "MAC", "IP", "ÉTAT"
     );
+    let dhcp = |id: IfaceId| matches!(&d.behavior, Behavior::Ip(n) if n.dhcp_ifaces.contains(&id));
     for i in &d.ifaces {
-        let ip = i.ip.map_or_else(|| "-".to_string(), |n| n.to_string());
+        let ip = match (i.ip, dhcp(i.id)) {
+            (Some(n), true) => format!("{n} (DHCP)"),
+            (Some(n), false) => n.to_string(),
+            (None, true) => "DHCP (aucune)".to_string(),
+            (None, false) => "-".to_string(),
+        };
         let state = if i.admin_up { "up" } else { "down" };
         let cable = match i.link.and_then(|l| sim.link(l)) {
             None => "non branché".to_string(),
@@ -720,6 +842,111 @@ pub fn show_acl(sim: &Simulation, dev: DeviceId) -> Result<String, NetivError> {
     for (i, r) in node.acl.rules.iter().enumerate() {
         let text = r.describe(|id| iface_name(sim, dev, id).to_string());
         let _ = writeln!(s, "  {}. {text}", i + 1);
+    }
+    Ok(s)
+}
+
+/// DHCP d'un équipement : clients, relais, serveur (plages et baux).
+pub fn show_dhcp(sim: &Simulation, dev: DeviceId) -> Result<String, NetivError> {
+    use crate::dhcp::ClientState;
+    let d = sim
+        .device(dev)
+        .ok_or_else(|| NetivError::UnknownDevice(dev.to_string()))?;
+    let Behavior::Ip(node) = &d.behavior else {
+        return Err(NetivError::NotAnIpDevice(d.name.clone()));
+    };
+    let mut s = String::new();
+    let mut any = false;
+    for id in &node.dhcp_ifaces {
+        any = true;
+        let name = iface_name(sim, dev, *id);
+        let state = match node.dhcp_clients.get(id) {
+            Some(ClientState::Bound(b)) => {
+                let mut t = format!("{} obtenue du serveur {}", b.ip, b.server);
+                if let Some(g) = b.gateway {
+                    let _ = write!(t, ", passerelle {g}");
+                }
+                if let Some(x) = b.dns {
+                    let _ = write!(t, ", DNS {x}");
+                }
+                let _ = write!(t, ", bail {} s", b.lease_s);
+                t
+            }
+            Some(ClientState::Selecting { attempt, .. }) => {
+                format!("recherche d'un serveur (tentative {attempt})")
+            }
+            Some(ClientState::Requesting { .. }) => "demande en cours".to_string(),
+            Some(ClientState::Failed) => "échec : aucun serveur n'a répondu".to_string(),
+            None => "pas encore demandée (« dhcp <équipement> renew »)".to_string(),
+        };
+        let _ = writeln!(s, "Client DHCP {name} : {state}");
+    }
+    for (iface, server) in &node.dhcp_relay {
+        any = true;
+        let _ = writeln!(s, "Relais DHCP {} → {server}", iface_name(sim, dev, *iface));
+    }
+    if let Some(srv) = &node.dhcp_server {
+        any = true;
+        let _ = writeln!(
+            s,
+            "Serveur DHCP : {}",
+            if srv.enabled { "démarré" } else { "ARRÊTÉ" }
+        );
+        for (k, p) in srv.pools.iter().enumerate() {
+            let used = srv.bound_in(k, sim.now());
+            let _ = writeln!(
+                s,
+                "  plage {p} — {used}/{} attribuée(s), bail {} s",
+                p.size(),
+                p.lease_s
+            );
+        }
+        let leases: Vec<_> = srv.leases.iter().filter(|(_, l)| l.bound).collect();
+        if !leases.is_empty() {
+            let _ = writeln!(s, "  {:<16} CLIENT", "BAIL");
+            for (ip, l) in leases {
+                let _ = writeln!(s, "  {ip:<16} {}", l.mac);
+            }
+        }
+    }
+    if !any {
+        let _ = writeln!(s, "(ni client, ni relais, ni serveur DHCP)");
+    }
+    Ok(s)
+}
+
+/// DNS d'un équipement : serveur utilisé, zone hébergée.
+pub fn show_dns(sim: &Simulation, dev: DeviceId) -> Result<String, NetivError> {
+    let d = sim
+        .device(dev)
+        .ok_or_else(|| NetivError::UnknownDevice(dev.to_string()))?;
+    let Behavior::Ip(node) = &d.behavior else {
+        return Err(NetivError::NotAnIpDevice(d.name.clone()));
+    };
+    let mut s = String::new();
+    match (node.dns, node.dns_learned) {
+        (Some(x), _) => {
+            let _ = writeln!(s, "Serveur DNS utilisé : {x} (configuré)");
+        }
+        (None, Some(x)) => {
+            let _ = writeln!(s, "Serveur DNS utilisé : {x} (reçu par DHCP)");
+        }
+        (None, None) => {
+            let _ = writeln!(s, "Serveur DNS utilisé : aucun");
+        }
+    }
+    if let Some(srv) = &node.dns_server {
+        let _ = writeln!(
+            s,
+            "Serveur DNS hébergé : {}",
+            if srv.enabled { "démarré" } else { "ARRÊTÉ" }
+        );
+        if srv.zone.is_empty() {
+            let _ = writeln!(s, "  (zone vide)");
+        }
+        for (name, ip) in &srv.zone {
+            let _ = writeln!(s, "  {name:<28} A {ip}");
+        }
     }
     Ok(s)
 }

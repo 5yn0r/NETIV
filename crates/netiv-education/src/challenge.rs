@@ -296,6 +296,11 @@ impl Challenge {
         if !problems.is_empty() {
             return Err(invalid(problems));
         }
+        // Les clients DHCP redemandent leur adresse : une panne DHCP n'a
+        // d'effet qu'à ce moment-là (comme au redémarrage des postes).
+        if sim.has_dhcp_clients() {
+            sim.restart_dhcp()?;
+        }
 
         if run_probe(&sim, &probe)?.success {
             problems.push(

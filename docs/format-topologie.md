@@ -62,6 +62,9 @@ Exemples complets dans le dépôt : [`examples/mvp.yaml`](../examples/mvp.yaml) 
 | `services` | Services à l'écoute : `{ proto: tcp\|udp, port: 80, name: http }`. |
 | `arp` | Entrées ARP statiques : `{ ip: <ip>, mac: 02:00:00:00:00:01 }`. |
 | `acl` | Filtrage (voir ci-dessous). |
+| `dns` | Serveur DNS utilisé (sinon : celui reçu par DHCP). |
+| `dhcp` | Serveur DHCP hébergé (voir ci-dessous). |
+| `dns_server` | Serveur DNS hébergé (voir ci-dessous). |
 | `pos` | Position sur le schéma de l'interface web : `[x, y]`. Facultatif, sans effet sur la simulation ; écrit par l'éditeur pour qu'un lab partagé s'ouvre avec la même disposition. |
 
 Comportement des types :
@@ -79,7 +82,8 @@ Comportement des types :
 | Clé | Description |
 |---|---|
 | `name` | Nom (`eth0`, `port1`…). |
-| `ip` | Adresse CIDR (`192.168.1.10/24`). Absente : interface sans adresse. |
+| `ip` | Adresse CIDR (`192.168.1.10/24`), ou `dhcp` pour la demander à un serveur. Absente : interface sans adresse. |
+| `dhcp_relay` | Routeur ou pare-feu : relaie les demandes DHCP du réseau de cette interface vers ce serveur. |
 | `management` | `true` : interface d'administration (l'analyse de sécurité vérifie qu'elle n'est pas joignable depuis les postes). |
 | `vlan` | Switch : port d'**accès** dans ce VLAN (1 par défaut). |
 | `trunk` | Switch : port **trunk** transportant ces VLAN (`[10, 20]` ; `[]` = tous). |
@@ -120,6 +124,45 @@ VLAN — exemple tiré de `campus` : deux VLAN, un trunk, et un routeur avec une
 
 Quand une règle bloque un paquet, la trace dit **laquelle** (numéro et texte).
 
+## DHCP et DNS
+
+```yaml
+  - name: PC1
+    type: host
+    interfaces: [{ name: eth0, ip: dhcp }]       # adresse, passerelle et DNS reçus du serveur
+
+  - name: R1
+    type: router
+    interfaces:
+      - { name: eth0, ip: 10.10.1.1/24, dhcp_relay: 10.10.2.10 }   # relaie les demandes du réseau des postes
+      - { name: eth1, ip: 10.10.2.1/24 }
+
+  - name: SRV
+    type: server
+    interfaces: [{ name: eth0, ip: 10.10.2.10/24 }]
+    gateway: 10.10.2.1
+    dhcp:
+      enabled: true                 # facultatif (oui par défaut)
+      pools:
+        - { network: 10.10.1.0/24, range: 10.10.1.100-10.10.1.150, gateway: 10.10.1.1, dns: 10.10.2.10, lease_s: 86400 }
+    dns_server:
+      enabled: true                 # facultatif (oui par défaut)
+      records:
+        web.lan: 10.10.2.10
+```
+
+- Au chargement, chaque client DHCP demande son adresse (Discover, Offer, Request, Ack). Un client
+  resté sans adresse donne un **avertissement**, pas une erreur.
+- La plage est choisie d'après le réseau de l'interface qui reçoit la demande, ou celui du relais.
+  Une même MAC reçoit toujours la même adresse ; une nouvelle MAC, la première libre de la plage.
+- Une diffusion DHCP ne traverse jamais un routeur : pour servir un autre réseau, il faut un
+  `dhcp_relay` sur l'interface du routeur côté postes.
+- Pas de renouvellement périodique : un bail dure toute la session (`dhcp <poste> release` le rend).
+- DNS : enregistrements A uniquement (nom → IPv4), sans récursion. Les noms ne distinguent pas
+  majuscules et minuscules.
+- Réseau d'exemple : `dhcp` (catalogue), fichier
+  [`crates/netiv-education/content/topologies/dhcp.yaml`](../crates/netiv-education/content/topologies/dhcp.yaml).
+
 ## `links`
 
 | Clé | Description |
@@ -131,7 +174,8 @@ Quand une règle bloque un paquet, la trace dit **laquelle** (numéro et texte).
 ## Erreurs et avertissements
 
 - Les **erreurs** empêchent le chargement : nom d'équipement en double, interface inexistante,
-  câble branché deux fois, adresse invalide, switch avec une passerelle… Elles sont toutes
+  câble branché deux fois, adresse invalide, switch avec une passerelle, plage DHCP hors de son
+  réseau, relais DHCP sur une machine qui n'est pas un routeur, nom DNS invalide… Elles sont toutes
   listées en une fois.
 - Les **avertissements** n'empêchent rien, car un lab de dépannage est volontairement cassé :
   IP utilisée plusieurs fois, passerelle hors des réseaux de l'équipement, route au prochain saut

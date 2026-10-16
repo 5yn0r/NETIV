@@ -34,6 +34,10 @@ pub fn kind_slug(k: &TraceKind) -> &'static str {
         | TraceKind::TcpResetSent { .. }
         | TraceKind::ServiceRequest { .. } => "app",
         TraceKind::FaultApplied { .. } | TraceKind::FaultRepaired { .. } => "fault",
+        TraceKind::Dhcp { .. } => "dhcp",
+        TraceKind::DnsLookup { .. }
+        | TraceKind::DnsResult { .. }
+        | TraceKind::DnsAnswered { .. } => "dns",
     }
 }
 
@@ -102,9 +106,15 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
                 .iter()
                 .map(|i| {
                     let peer = i.link.and_then(|l| sim.link(l)).and_then(|l| l.peer_of(d.id, i.id));
+                    let (dhcp, relay) = match &d.behavior {
+                        Behavior::Ip(n) => (n.dhcp_ifaces.contains(&i.id), n.dhcp_relay.get(&i.id).map(ToString::to_string)),
+                        Behavior::Switch(_) => (false, None),
+                    };
                     json!({
                         "name": i.name,
                         "ip": i.ip.map(|n| n.to_string()),
+                        "dhcp": dhcp,
+                        "dhcp_relay": relay,
                         "mac": i.mac.to_string(),
                         "up": i.admin_up,
                         "link_up": i.link.and_then(|l| sim.link(l)).map(|l| l.up),
@@ -116,6 +126,13 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
                 Behavior::Ip(n) => (n.forwarding, !n.acl.rules.is_empty() || n.acl.default == netiv_core::acl::AclAction::Deny),
                 Behavior::Switch(_) => (false, false),
             };
+            let (dhcp_server, dns_server) = match &d.behavior {
+                Behavior::Ip(n) => (
+                    n.dhcp_server.as_ref().map(|s| json!({ "enabled": s.enabled })),
+                    n.dns_server.as_ref().map(|s| json!({ "enabled": s.enabled })),
+                ),
+                Behavior::Switch(_) => (None, None),
+            };
             json!({
                 "name": d.name,
                 "kind": d.kind.to_string(),
@@ -123,6 +140,8 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
                 "ifaces": ifaces,
                 "forwarding": forwarding,
                 "filtered": filtered,
+                "dhcp_server": dhcp_server,
+                "dns_server": dns_server,
                 "pos": positions.get(&d.name),
             })
         })
@@ -177,6 +196,15 @@ pub fn transactions(sim: &Simulation, limit: usize) -> Value {
             TraceKind::PingSent { dst, seq } => ("ping", format!("ping → {dst} (seq {seq})")),
             TraceKind::CurlStarted { dst, port } => ("curl", format!("curl → {dst}:{port}")),
             TraceKind::UdpSent { dst, port } => ("udp", format!("udp → {dst}:{port}")),
+            // Un échange DHCP compte une fois (première tentative), une résolution aussi.
+            TraceKind::Dhcp {
+                iface,
+                event: netiv_core::dhcp::DhcpEvent::ClientDiscover { attempt: 1 },
+            } => (
+                "dhcp",
+                format!("DHCP sur {}", render::iface_name(sim, e.device, *iface)),
+            ),
+            TraceKind::DnsLookup { name, .. } => ("dns", format!("DNS → {name}")),
             _ => continue,
         };
         let Some(tid) = e.trace_id else { continue };
@@ -201,6 +229,18 @@ pub fn transactions(sim: &Simulation, limit: usize) -> Value {
                     },
                 ),
                 TraceKind::PingError { .. } | TraceKind::PingTimeout { .. } => Some("fail"),
+                TraceKind::Dhcp { event, .. } => match event {
+                    netiv_core::dhcp::DhcpEvent::ClientBound(_) => Some("ok"),
+                    netiv_core::dhcp::DhcpEvent::ClientFailed { .. } => Some("fail"),
+                    _ => None,
+                },
+                TraceKind::DnsResult { outcome, .. } => Some(
+                    if matches!(outcome, netiv_core::dns::DnsOutcome::Resolved(_)) {
+                        "ok"
+                    } else {
+                        "fail"
+                    },
+                ),
                 _ => None,
             })
             .last()
@@ -246,11 +286,17 @@ pub fn device_json(sim: &Simulation, name: &str) -> Option<Value> {
     };
     add("Interfaces", render::show_interfaces(sim, id));
     match &dev.behavior {
-        Behavior::Ip(_) => {
+        Behavior::Ip(n) => {
             add("Routes", render::show_routes(sim, id));
             add("Cache ARP", render::show_arp(sim, id));
             add("Services", render::show_services(sim, id));
             add("Filtrage", render::show_acl(sim, id));
+            if !n.dhcp_ifaces.is_empty() || !n.dhcp_relay.is_empty() || n.dhcp_server.is_some() {
+                add("DHCP", render::show_dhcp(sim, id));
+            }
+            if n.effective_dns().is_some() || n.dns_server.is_some() {
+                add("DNS", render::show_dns(sim, id));
+            }
         }
         Behavior::Switch(_) => {
             add("VLAN et ports", render::show_vlans(sim, id));

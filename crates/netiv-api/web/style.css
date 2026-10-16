@@ -268,6 +268,7 @@ textarea { width: 100%; font: 0.8571rem/1.4 var(--mono); resize: vertical; }
 .node text { fill: var(--text); font-size: 12px; text-anchor: middle; pointer-events: none; }
 .node .sub { fill: var(--muted); font-size: 10px; }
 .node .badge { fill: var(--bad); }
+.node .svc-tag { fill: var(--accent); font-size: 9px; font-weight: 700; letter-spacing: .06em; }
 .packet { fill: var(--pkt); stroke: var(--surface); stroke-width: 2; }
 
 /* ---- console ---- */
@@ -322,6 +323,8 @@ details > pre { padding: 4px 10px 10px; overflow-x: auto; white-space: pre; }
 .steps .k-drop, .steps .k-fault { color: var(--bad); }
 .steps .k-route, .steps .k-switch, .steps .k-arp { color: var(--muted); }
 .steps .k-app { color: var(--ok); font-weight: 600; }
+.steps .k-dhcp { color: var(--node-router); }
+.steps .k-dns { color: var(--node-server); }
 
 /* ---- analyse ---- */
 .bars { display: grid; gap: 7px; margin-bottom: 8px; }

@@ -7,6 +7,8 @@
 pub mod acl;
 pub mod addr;
 pub mod device;
+pub mod dhcp;
+pub mod dns;
 pub mod error;
 pub mod fault;
 pub mod ids;

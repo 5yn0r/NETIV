@@ -13,6 +13,8 @@ use crate::{ChaosError, Flow};
 /// Tout ce qu'un flux sain utilise.
 #[derive(Clone, Debug, Default)]
 pub struct PathInfo {
+    /// Équipement source du flux.
+    pub src: Option<DeviceId>,
     /// Équipement de destination.
     pub dst_device: Option<DeviceId>,
     /// Routeurs et pare-feu traversés à l'aller, dans l'ordre.
@@ -52,6 +54,7 @@ impl PathInfo {
         }
 
         let mut info = PathInfo {
+            src: Some(flow.src),
             dst_device: owner_of(sim, flow.dst).map(|(d, _)| d),
             service: flow.service,
             ..PathInfo::default()

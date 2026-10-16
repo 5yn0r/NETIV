@@ -337,7 +337,7 @@ async fn library(State(st): State<AppState>) -> Json<Value> {
         "causes": netiv_diagnostics::CauseKind::ALL.iter().map(|k| json!({
             "slug": k.slug(), "label": k.label(),
         })).collect::<Vec<_>>(),
-        "behaviors": ["port-scan", "host-sweep", "lateral-movement", "beaconing", "arp-spoofing", "repeated-denials"],
+        "behaviors": ["port-scan", "host-sweep", "lateral-movement", "beaconing", "arp-spoofing", "repeated-denials", "rogue-dhcp"],
         "generator": {
             "types": netiv_topology::generate::TopoKind::ALL.map(netiv_topology::generate::TopoKind::slug),
             "topics": netiv_education::generate::TOPICS,

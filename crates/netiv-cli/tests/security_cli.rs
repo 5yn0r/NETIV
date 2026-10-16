@@ -262,7 +262,7 @@ fn security_scenarios_unlock_the_network_defender_badge_and_count_in_the_dashboa
     );
     let dash = run(&mut s, "dashboard");
     assert!(
-        dash.contains("Sécurité") && dash.contains("(2/5)"),
+        dash.contains("Sécurité") && dash.contains("(2/6)"),
         "{dash}"
     );
     assert!(dash.contains("Network Defender"), "{dash}");

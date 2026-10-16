@@ -100,7 +100,27 @@ netiv> range check                    # attaque bloquée ET trafic légitime int
 netiv> answer WEB01 port-scan         # le coupable et son comportement
 ```
 
-## 6. L'interface web
+## 6. DHCP et DNS
+
+Le réseau `dhcp` du catalogue (`netiv run` puis `load`, ou « Ouvrir » dans le navigateur) a des
+postes sans adresse écrite : ils la demandent à un serveur au démarrage.
+
+```text
+netiv> show dhcp SRV            # plages, occupation, baux
+netiv> trace 1                  # Discover → Offer → Request → Ack, relais compris
+netiv> ping PC1 web.lan         # résolution DNS, puis ping
+netiv> dhcp PC2 release         # rendre l'adresse…
+netiv> dhcp PC2                 # … et la redemander (même MAC → même adresse)
+netiv> dhcp relay R1 eth0 none  # casser le relais
+netiv> dhcp PC1 release ; dhcp PC1
+netiv> diagnose PC1 10.10.2.10  # → relais DHCP absent sur R1, et la commande pour réparer
+netiv> diagnose PC1 web.lan     # contrôle la résolution DNS puis le chemin
+```
+
+Trois défis (`beginner-06`, `intermediate-06`, `advanced-06`) portent sur un serveur arrêté, un
+relais oublié et un serveur DHCP pirate.
+
+## 7. L'interface web
 
 `netiv serve` ouvre l'interface sur <http://127.0.0.1:8787>.
 
@@ -137,7 +157,7 @@ Le serveur n'écoute que sur `127.0.0.1` ; une autre adresse est refusée sans `
 (l'API n'a pas d'authentification). Les sessions web ne peuvent pas lire ni écrire de fichiers
 sur le disque. Détails dans [api.md](api.md).
 
-## 7. Construire un réseau dans le navigateur
+## 8. Construire un réseau dans le navigateur
 
 Dans le catalogue : **＋ Nouveau réseau** (ou, sur un lab ouvert, le bouton **✎ Construire**,
 touche `B`). Le mode Construire est indisponible pendant un défi ou un cyber range.
@@ -150,7 +170,8 @@ touche `B`). Le mode Construire est indisponible pendant un défi ou un cyber ra
 3. **Adresser automatiquement** : IP de chaque segment (/24, ou /30 entre deux routeurs),
    passerelles et routes statiques manquantes. Rien de ce que tu as déjà écrit n'est remplacé.
 4. **Configurer** : un clic sur un équipement ouvre ses réglages dans le panneau de droite (nom,
-   rôle, interfaces, VLAN des ports de switch, passerelle, routes, services, filtrage). Chaque
+   rôle, interfaces et case DHCP, VLAN des ports de switch, passerelle, serveur DNS, routes,
+   services, relais DHCP, serveurs DHCP et DNS, filtrage). Chaque
    champ s'applique quand tu le quittes ou appuies sur Entrée.
 5. **Tester** : la barre d'outils (ping, curl) et la console restent disponibles.
 
@@ -169,7 +190,7 @@ erreur sélectionne l'équipement. Les avertissements (IP en double, passerelle 
 signalés sans bloquer, puisqu'un lab de dépannage peut être cassé exprès. Les positions des
 équipements sont enregistrées avec le lab.
 
-## 8. Créer et partager ses réseaux
+## 9. Créer et partager ses réseaux
 
 - Écrire un réseau à la main : [format-topologie.md](format-topologie.md), puis `netiv validate mon-reseau.yaml`.
 - En générer un : `netiv generate --type campus --routers 5 --hosts 20 --seed 1 --out campus.yaml`.

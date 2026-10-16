@@ -1,0 +1,25 @@
+id: intermediate-06
+title: Le relais oublié
+topic: services
+difficulty: medium
+description: |
+  Le réseau a été réorganisé : le serveur DHCP SRV est désormais dans la salle
+  serveurs (10.10.2.0/24), séparé des postes du bureau par le routeur R1.
+  Depuis, PC1 et PC2 n'obtiennent plus d'adresse, alors que PC3 (dans la salle
+  serveurs) en reçoit une sans souci. Le serveur DHCP fonctionne pourtant.
+  Fais en sorte que PC1 puisse joindre 10.10.2.10.
+time_limit_minutes: 20
+topology_ref: dhcp
+objective: { from: PC1, to: 10.10.2.10 }
+faults:
+  - dhcp_relay: { iface: "R1:eth0" }
+solution:
+  cause: dhcp-relay-missing
+  device: R1
+  explanation: |
+    Une demande DHCP est une diffusion (destination 255.255.255.255) : un
+    routeur ne la transmet jamais à un autre réseau. Pour qu'un serveur DHCP
+    serve plusieurs réseaux, chaque routeur doit relayer les demandes de ses
+    réseaux de postes vers le serveur (« ip helper-address » chez Cisco). Le
+    relais de R1:eth0 avait disparu.
+  commands: ["dhcp relay R1 eth0 10.10.2.10", "dhcp PC1 renew"]

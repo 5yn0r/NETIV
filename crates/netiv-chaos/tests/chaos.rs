@@ -28,6 +28,15 @@ fn dmz() -> Simulation {
     load(include_str!("../../../examples/dmz.yaml"))
 }
 
+/// Postes en DHCP, relais, serveur DHCP/DNS, imprimante à adresse fixe.
+fn dhcp() -> Simulation {
+    let mut sim = load(include_str!(
+        "../../netiv-education/content/topologies/dhcp.yaml"
+    ));
+    sim.clear_trace();
+    sim
+}
+
 fn ip(s: &str) -> Ipv4Addr {
     s.parse().unwrap()
 }
@@ -38,6 +47,8 @@ fn scenarios() -> Vec<(&'static str, Simulation, Flow)> {
     let pc1 = m.device_id("PC1").unwrap();
     let d = dmz();
     let dpc = d.device_id("PC1").unwrap();
+    let h = dhcp();
+    let hpc = h.device_id("PC1").unwrap();
     vec![
         (
             "mvp/ping",
@@ -75,6 +86,16 @@ fn scenarios() -> Vec<(&'static str, Simulation, Flow)> {
                 service: None,
             },
         ),
+        // En dernier : les autres tests prennent les scénarios par position.
+        (
+            "dhcp/ping",
+            h,
+            Flow {
+                src: hpc,
+                dst: ip("10.10.2.10"),
+                service: None,
+            },
+        ),
     ]
 }
 
@@ -93,6 +114,10 @@ fn every_template_is_found_by_the_diagnosis_and_healed_by_the_repair() {
                     continue;
                 };
                 let id = work.inject_fault(fault, false).unwrap();
+                // Une panne DHCP agit quand le client redemande son adresse.
+                if netiv_chaos::is_dhcp_kind(t.kind) {
+                    netiv_chaos::restart_client(&mut work, flow.src).unwrap();
+                }
                 let d = diagnose(&work, Some(&chaos.baseline), &flow.request()).unwrap();
                 let got = d.cause.as_ref().map(|c| c.kind);
                 assert_eq!(
@@ -111,6 +136,9 @@ fn every_template_is_found_by_the_diagnosis_and_healed_by_the_repair() {
                 );
                 // La réparation restaure exactement la configuration et le flux.
                 work.repair_fault(id, false).unwrap();
+                if netiv_chaos::is_dhcp_kind(t.kind) {
+                    netiv_chaos::restart_client(&mut work, flow.src).unwrap();
+                }
                 assert_eq!(work.config_fingerprint(), healthy, "[{name}] {}", t.id);
                 let probe = run_probe(
                     &work,
@@ -147,7 +175,15 @@ fn every_template_is_found_by_the_diagnosis_and_healed_by_the_repair() {
 #[test]
 fn the_catalog_covers_every_cause_the_diagnosis_knows() {
     let kinds: BTreeSet<CauseKind> = catalog().iter().map(|t| t.kind).collect();
-    for k in CauseKind::ALL {
+    // Le Chaos Engine casse des flux IP (source → adresse). Une panne DNS ne
+    // casse pas un flux IP mais la résolution d'un nom : elle se diagnostique
+    // avec « diagnose <poste> <nom> » (testé dans netiv-diagnostics).
+    let dns = [
+        CauseKind::DnsWrongServer,
+        CauseKind::DnsServerDown,
+        CauseKind::DnsRecordWrong,
+    ];
+    for k in CauseKind::ALL.into_iter().filter(|k| !dns.contains(k)) {
         assert!(kinds.contains(&k), "aucune panne ne produit {k:?}");
     }
     let ids: BTreeSet<&str> = catalog().iter().map(|t| t.id).collect();

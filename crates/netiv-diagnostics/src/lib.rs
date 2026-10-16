@@ -4,6 +4,7 @@
 //! question au réseau ne le modifie jamais.
 
 pub mod cause;
+pub mod dhcpdns;
 pub mod diagnose;
 pub mod hints;
 pub mod l2;
@@ -11,6 +12,7 @@ pub mod parallel;
 pub mod probe;
 
 pub use cause::{CauseKind, Layer, RootCause};
+pub use dhcpdns::{dhcp_cause, diagnose_name, resolve_in_copy};
 pub use diagnose::{Check, CheckStatus, Diagnosis, Request, Status, diagnose};
 pub use hints::hints_for;
 pub use probe::{Probe, ProbeKind, ProbeResult, run_probe};

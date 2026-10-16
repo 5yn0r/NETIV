@@ -776,6 +776,8 @@
       g.append(s('text', { y: 42 }, d.name));
       const sub = subLabel(d, big);
       if (sub) g.append(s('text', { class: 'sub', y: 55 }, sub));
+      const roles = [d.dhcp_server ? 'DHCP' : null, d.dns_server ? 'DNS' : null].filter(Boolean);
+      if (roles.length) g.append(s('text', { class: 'svc-tag', y: -30 }, roles.join(' · ')));
       if (anyDown) g.append(s('circle', { class: 'badge', cx: 24, cy: -18, r: 6 }), s('text', { x: 24, y: -14.5, style: 'fill:#fff;font-size:10px;font-weight:700' }, '!'));
       g.append(s('title', null, `${d.name} (${d.kind}, rôle ${d.role})`));
       attachNode(g, d.name);
@@ -1391,14 +1393,16 @@
     if (isIp(d.type)) {
       general.append(
         h('label', null, 'Passerelle'),
-        input('dev-gw', d.gateway || '', (v) => editDevice(name, (x) => { if (v) x.gateway = v; else delete x.gateway; }), { placeholder: 'aucune', class: 'mono' }));
+        input('dev-gw', d.gateway || '', (v) => editDevice(name, (x) => { if (v) x.gateway = v; else delete x.gateway; }), { placeholder: 'aucune (ou reçue par DHCP)', class: 'mono' }),
+        h('label', null, 'Serveur DNS'),
+        input('dev-dns', d.dns || '', (v) => editDevice(name, (x) => { if (v) x.dns = v; else delete x.dns; }), { placeholder: 'aucun (ou reçu par DHCP)', class: 'mono' }));
     }
     root.append(general);
 
     // Interfaces.
     const ifs = d.interfaces || [];
     const table = h('table', { class: 'grid' });
-    const head = d.type === 'switch' ? ['Port', 'Mode', 'VLAN', ''] : ['Interface', 'Adresse IP', 'Admin', ''];
+    const head = d.type === 'switch' ? ['Port', 'Mode', 'VLAN', ''] : ['Interface', 'Adresse IP', 'DHCP', 'Admin', ''];
     table.append(h('thead', null, h('tr', null, head.map((t) => h('th', null, t)))));
     const body = h('tbody');
     ifs.forEach((i, k) => {
@@ -1437,9 +1441,18 @@
           }), { placeholder: '1', class: 'mono narrow' }));
         body.append(h('tr', null, nameCell, h('td', null, mode), vlanCell, remove));
       } else {
+        const isDhcp = i.ip === 'dhcp';
         body.append(h('tr', null,
           nameCell,
-          h('td', null, input(`if-${k}-ip`, i.ip || '', (v) => editDevice(name, (x) => { if (v) x.interfaces[k].ip = v; else delete x.interfaces[k].ip; }), { placeholder: 'aucune (ex. 10.0.1.10/24)', class: 'mono' })),
+          h('td', null, isDhcp
+            ? h('span', { class: 'muted', title: 'Adresse demandée à un serveur DHCP' }, 'obtenue par DHCP')
+            : input(`if-${k}-ip`, i.ip || '', (v) => editDevice(name, (x) => { if (v) x.interfaces[k].ip = v; else delete x.interfaces[k].ip; }), { placeholder: 'aucune (ex. 10.0.1.10/24)', class: 'mono' })),
+          h('td', null, (() => {
+            const c = h('input', { type: 'checkbox', 'data-k': `if-${k}-dhcp`, title: "Demander l'adresse à un serveur DHCP" });
+            c.checked = isDhcp;
+            c.addEventListener('change', () => editDevice(name, (x) => { if (c.checked) x.interfaces[k].ip = 'dhcp'; else delete x.interfaces[k].ip; }));
+            return c;
+          })()),
           h('td', null, (() => {
             const c = h('input', { type: 'checkbox', 'data-k': `if-${k}-mgmt`, title: "Interface d'administration" });
             c.checked = !!i.management;
@@ -1500,6 +1513,8 @@
           }),
         }, `+ ${n}`))));
 
+    renderDhcpDnsForm(root, d);
+
     // Filtrage.
     if (!isRouter(d.type)) return;
     const fw = d.type === 'firewall';
@@ -1532,6 +1547,95 @@
       h('div', { class: 'btn-row' },
         h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { withAcl(x).rules.push({ action: 'allow', proto: 'tcp', port: '80' }); }) }, '+ autoriser'),
         h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { withAcl(x).rules.push({ action: 'deny' }); }) }, '+ refuser')));
+  }
+
+  /** Relais DHCP (routeurs), serveur DHCP et serveur DNS d'un équipement IP. */
+  function renderDhcpDnsForm(root, d) {
+    const name = d.name;
+    // Relais : une interface de routeur transmet les demandes de son réseau au serveur.
+    if (isRouter(d.type)) {
+      const rows = (d.interfaces || []).map((i, k) => h('tr', null,
+        h('td', { class: 'mono' }, i.name),
+        h('td', null, input(`relay-${k}`, i.dhcp_relay || '', (v) => editDevice(name, (x) => {
+          if (v) x.interfaces[k].dhcp_relay = v; else delete x.interfaces[k].dhcp_relay;
+        }), { class: 'mono', placeholder: 'aucun (IP du serveur DHCP)' }))));
+      root.append(h('h3', null, 'Relais DHCP'),
+        h('p', { class: 'muted' }, 'Une demande DHCP est une diffusion : un routeur ne la transmet que si l’interface du réseau des postes la relaie vers le serveur.'),
+        h('table', { class: 'grid' }, h('thead', null, h('tr', null, h('th', null, 'Interface'), h('th', null, 'Serveur visé'))), h('tbody', null, rows)));
+    }
+
+    // Serveur DHCP.
+    const dhcp = d.dhcp;
+    root.append(h('h3', null, 'Serveur DHCP'));
+    if (!dhcp) {
+      root.append(h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => {
+        // Plage proposée : le réseau de la première interface adressée.
+        const addr = (x.interfaces || []).map((i) => i.ip).find((ip) => ip && ip !== 'dhcp');
+        const m = addr && /^(\d+)\.(\d+)\.(\d+)\.\d+\/(\d+)$/.exec(addr);
+        if (!m) { banner('Donne d’abord une adresse fixe à une interface de cet équipement.'); return false; }
+        const net = `${m[1]}.${m[2]}.${m[3]}`;
+        const gw = isRouter(x.type) ? addr.split('/')[0] : x.gateway;
+        x.dhcp = { pools: [{ network: `${net}.0/24`, range: `${net}.100-${net}.150`, ...(gw ? { gateway: gw } : {}) }] };
+        return true;
+      }) }, '+ serveur DHCP'));
+    } else {
+      const pools = dhcp.pools || [];
+      const pt = h('table', { class: 'grid' }, h('thead', null, h('tr', null, ['Réseau', 'Plage', 'Passerelle', 'DNS', ''].map((t) => h('th', null, t)))));
+      const pb = h('tbody');
+      pools.forEach((p, k) => {
+        const set = (field) => (v) => editDevice(name, (x) => { const q = x.dhcp.pools[k]; if (v) q[field] = v; else delete q[field]; });
+        pb.append(h('tr', null,
+          h('td', null, input(`pool-${k}-net`, p.network, set('network'), { class: 'mono' })),
+          h('td', null, input(`pool-${k}-range`, p.range, set('range'), { class: 'mono', placeholder: 'première-dernière' })),
+          h('td', null, input(`pool-${k}-gw`, p.gateway || '', set('gateway'), { class: 'mono', placeholder: '—' })),
+          h('td', null, input(`pool-${k}-dns`, p.dns || '', set('dns'), { class: 'mono', placeholder: '—' })),
+          h('td', null, del('Supprimer la plage', () => editDevice(name, (x) => {
+            x.dhcp.pools.splice(k, 1);
+            if (!x.dhcp.pools.length) delete x.dhcp;
+          })))));
+      });
+      pt.append(pb);
+      root.append(
+        checkbox('dhcp-on', dhcp.enabled !== false, (v) => editDevice(name, (x) => { if (v) delete x.dhcp.enabled; else x.dhcp.enabled = false; }), 'service démarré'),
+        pt,
+        h('div', { class: 'btn-row' },
+          h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { x.dhcp.pools.push({ network: '10.0.9.0/24', range: '10.0.9.100-10.0.9.150' }); }) }, '+ plage'),
+          h('button', { type: 'button', class: 'danger', onclick: () => editDevice(name, (x) => { delete x.dhcp; }) }, 'Supprimer le serveur')));
+    }
+
+    // Serveur DNS.
+    const dns = d.dns_server;
+    root.append(h('h3', null, 'Serveur DNS'));
+    if (!dns) {
+      root.append(h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { x.dns_server = { records: {} }; }) }, '+ serveur DNS'));
+      return;
+    }
+    const records = Object.entries(dns.records || {});
+    const rt = h('table', { class: 'grid' }, h('thead', null, h('tr', null, ['Nom', 'Adresse', ''].map((t) => h('th', null, t)))));
+    const rb = h('tbody');
+    records.forEach(([rname, rip], k) => rb.append(h('tr', null,
+      h('td', null, input(`rec-${k}-name`, rname, (v) => editDevice(name, (x) => {
+        if (!v || v === rname) return false;
+        const recs = x.dns_server.records; const ip = recs[rname]; delete recs[rname]; recs[v] = ip;
+        return true;
+      }), { class: 'mono' })),
+      h('td', null, input(`rec-${k}-ip`, rip, (v) => editDevice(name, (x) => { if (!v) return false; x.dns_server.records[rname] = v; return true; }), { class: 'mono' })),
+      h('td', null, del(`Supprimer ${rname}`, () => editDevice(name, (x) => { delete x.dns_server.records[rname]; }))))));
+    rt.append(rb);
+    root.append(
+      checkbox('dns-on', dns.enabled !== false, (v) => editDevice(name, (x) => { if (v) delete x.dns_server.enabled; else x.dns_server.enabled = false; }), 'service démarré'),
+      records.length ? rt : h('p', { class: 'muted' }, 'Zone vide.'),
+      h('div', { class: 'add-row' },
+        input('rec-new-name', '', () => {}, { class: 'mono', placeholder: 'nom (web.lan)' }),
+        input('rec-new-ip', '', () => {}, { class: 'mono', placeholder: 'adresse' }),
+        h('button', { type: 'button', class: 'add', onclick: () => {
+          const n = root.querySelector('[data-k="rec-new-name"]').value.trim();
+          const a = root.querySelector('[data-k="rec-new-ip"]').value.trim();
+          if (!n || !a) { banner('Indique le nom et l’adresse.'); return; }
+          editDevice(name, (x) => { x.dns_server.records = x.dns_server.records || {}; x.dns_server.records[n] = a; });
+        } }, '+ nom')),
+      h('div', { class: 'btn-row' },
+        h('button', { type: 'button', class: 'danger', onclick: () => editDevice(name, (x) => { delete x.dns_server; }) }, 'Supprimer le serveur DNS')));
   }
 
   function renderLinkForm(root, def, sel) {
@@ -1818,7 +1922,7 @@
 
   const KIND_FILTERS = [
     ['app', 'Échanges'], ['frame_sent', 'Envois'], ['frame_received', 'Réceptions'], ['switch', 'Commutation'],
-    ['arp', 'ARP'], ['route', 'Routage'], ['drop', 'Refus'], ['config', 'Config'],
+    ['arp', 'ARP'], ['route', 'Routage'], ['dhcp', 'DHCP'], ['dns', 'DNS'], ['drop', 'Refus'], ['config', 'Config'],
   ];
 
   async function loadTrace() {

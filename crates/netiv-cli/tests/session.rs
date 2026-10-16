@@ -186,7 +186,7 @@ fn changing_ip_to_a_wrong_mask_is_reported() {
 fn user_errors_are_explained() {
     let mut s = session();
     assert!(fail(&mut s, "ping NOPE 1.1.1.1").contains("équipements : PC1, SW1, R1, R2, SERVER"));
-    assert!(fail(&mut s, "ping PC1 pas-une-ip").contains("invalide"));
+    assert!(fail(&mut s, "ping PC1 pas_une_ip").contains("ni une adresse IPv4 ni un nom"));
     assert!(fail(&mut s, "frobnicate").contains("commande inconnue"));
     assert!(fail(&mut s, "trace 999").contains("aucune transaction #999"));
     assert!(fail(&mut s, "trace abc").contains("numéro invalide"));
@@ -196,6 +196,14 @@ fn user_errors_are_explained() {
     assert!(fail(&mut s, "ping SW1 1.1.1.1").contains("switch"));
     assert!(fail(&mut s, "cable SW1 port3 cut").contains("aucun câble"));
     assert!(fail(&mut s, "loss PC1 eth0 2").contains("taux de perte invalide"));
+    // Un nom valide sans serveur DNS : expliqué, pas une erreur de saisie.
+    let mut out = Vec::new();
+    s.exec("ping PC1 pas-une-ip", &mut out).unwrap();
+    assert!(
+        String::from_utf8(out)
+            .unwrap()
+            .contains("aucun serveur DNS configuré")
+    );
 }
 
 #[test]

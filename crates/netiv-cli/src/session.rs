@@ -11,6 +11,7 @@ mod edu;
 pub use edu::ChallengeInfo;
 mod intel;
 mod lab;
+mod netsvc;
 mod security;
 
 use netiv_chaos::{Chaos, Difficulty, Filter, Flow as ChaosFlow};
@@ -66,14 +67,16 @@ COMMANDES
     show mac <switch>              table d'adresses MAC d'un switch
     show vlan <switch>             mode des ports (access / trunk)
     show acl|services <equip>      règles de filtrage / services à l'écoute
+    show dhcp|dns <equip>          client, relais et serveur DHCP / serveur DNS, zone
 
   Simulation
-    ping <equip> <ip> [n] [--step] envoie n pings (1 par défaut) et affiche le résultat
+    ping <equip> <ip|nom> [n] [--step]  envoie n pings (1 par défaut) ; un nom est d'abord résolu par DNS
                                    (--step : programme seulement, avance avec step/run)
     step [n]                       exécute n événements (1 par défaut) en les détaillant
     run                            exécute tous les événements en attente
-    curl <equip> <ip> [port]       connexion TCP + requête (port 80 par défaut)
-    udp <equip> <ip> <port> [txt]  datagramme UDP, attend une réponse
+    curl <equip> <ip|nom> [port]   connexion TCP + requête (port 80 par défaut)
+    udp <equip> <ip|nom> <port> [txt]  datagramme UDP, attend une réponse
+    nslookup <equip> <nom>         résout un nom auprès du serveur DNS de l'équipement
     time                           date simulée et événements en attente
 
   Observer
@@ -119,12 +122,12 @@ COMMANDES
                 [--difficulty easy|medium|hard] [--seed N] [--visible]
                                    injecte une panne qui touche ce flux (cachée par défaut)
     chaos undo | reveal | list     répare tout / révèle les pannes / liste le catalogue
-    diagnose <equip> <ip> [tcp|udp <port>]   cause racine d'un échec
+    diagnose <equip> <ip|nom> [tcp|udp <port>]   cause racine d'un échec (DHCP et DNS compris)
     hint                           indice suivant (du plus vague à la solution)
     baseline save|clear            mémorise l'état « sain » pour comparer avec « diagnose »
 
   Configurer / casser
-    ip <equip> <iface> <cidr|none>         change l'adresse IP
+    ip <equip> <iface> <cidr|none|dhcp>    change l'adresse IP (dhcp : la demander à un serveur)
     gateway <equip> <ip|none>              change la passerelle par défaut
     route add <equip> <cidr> via <ip>      ajoute une route statique
     route del <equip> <cidr>               supprime les routes vers ce réseau
@@ -143,6 +146,17 @@ COMMANDES
     acl del <equip> <n°>                       supprime la règle n°
     acl default <equip> allow|deny             politique par défaut
     acl stateful <equip> on|off                suivi de connexion
+
+  DHCP et DNS
+    dhcp <equip> [renew|release] [iface]       redemande / rend l'adresse obtenue par DHCP
+    dhcp server <equip> on|off                 démarre / arrête le serveur DHCP
+    dhcp pool add <equip> <réseau> <première>-<dernière> [gw <ip>] [dns <ip>] [lease <s>]
+    dhcp pool del <equip> <réseau>             supprime une plage
+    dhcp relay <routeur> <iface> <ip|none>     relaie les demandes DHCP de ce réseau vers un serveur
+    dns <equip> <ip|none>                      serveur DNS utilisé par l'équipement
+    dns server <equip> on|off                  démarre / arrête le serveur DNS
+    dns record add <equip> <nom> <ip>          ajoute ou modifie un nom dans la zone
+    dns record del <equip> <nom>               supprime un nom
 
   Plusieurs commandes sur une ligne : séparer par « ; ».
   help, quit
@@ -465,6 +479,9 @@ impl Session {
                 )?;
             }
             "ip" => self.cmd_ip(args, out)?,
+            "dhcp" => self.cmd_dhcp(args, out)?,
+            "dns" => self.cmd_dns(args, out)?,
+            "nslookup" => self.cmd_nslookup(args, out)?,
             "gateway" => self.cmd_gateway(args, out)?,
             "route" => self.cmd_route(args, out)?,
             "iface" => self.cmd_iface(args, out)?,
@@ -530,6 +547,8 @@ impl Session {
             })?,
             "acl" => render::show_acl(sim, id)?,
             "services" | "service" => render::show_services(sim, id)?,
+            "dhcp" => render::show_dhcp(sim, id)?,
+            "dns" => render::show_dns(sim, id)?,
             "mac" => render::show_mac_table(sim, id).map_err(|_| {
                 CliError(format!(
                     "« {dev} » n'est pas un switch (show mac ne s'applique qu'aux switches)"
@@ -537,7 +556,7 @@ impl Session {
             })?,
             other => {
                 return err(format!(
-                    "« show {other} » inconnu (ifaces, arp, route, mac, vlan, acl, services)"
+                    "« show {other} » inconnu (ifaces, arp, route, mac, vlan, acl, services, dhcp, dns)"
                 ));
             }
         };
@@ -556,12 +575,30 @@ impl Session {
                 n.parse::<u16>()
                     .map_err(|_| CliError(format!("nombre de pings invalide : « {n} »")))?,
             ),
-            _ => return err("usage : ping <équipement> <ip> [n] [--step]"),
+            _ => return err("usage : ping <équipement> <ip|nom> [n] [--step]"),
         };
-        let dst: Ipv4Addr = dst
-            .parse()
-            .map_err(|_| CliError(format!("adresse IPv4 invalide : « {dst} »")))?;
         let id = self.device(dev)?;
+        let dst = match netsvc::parse_target(dst)? {
+            netsvc::Target::Ip(ip) => ip,
+            netsvc::Target::Name(name) => {
+                if step_only {
+                    let sim = self.sim_mut()?;
+                    let then = netiv_core::dns::AfterResolve::Ping { count };
+                    sim.command(id, Command::Resolve { name, then })?;
+                    writeln!(
+                        out,
+                        "Résolution puis ping programmés. Avance avec « step » ou « run »."
+                    )?;
+                    return Ok(());
+                }
+                let then = netiv_core::dns::AfterResolve::Ping { count };
+                let (start, ip) = self.resolve_then(id, &name, then, out)?;
+                if let Some(ip) = ip {
+                    print_ping_report(self.sim()?, dev, ip, start, out)?;
+                }
+                return Ok(());
+            }
+        };
         let sim = self.sim_mut()?;
         let start = sim.trace().len();
         sim.ping(id, dst, count)?;
@@ -581,12 +618,20 @@ impl Session {
         let (dev, dst, port) = match args {
             [d, ip] => (*d, *ip, 80u16),
             [d, ip, p] => (*d, *ip, parse_port(p)?),
-            _ => return err("usage : curl <équipement> <ip> [port]"),
+            _ => return err("usage : curl <équipement> <ip|nom> [port]"),
         };
-        let dst: Ipv4Addr = dst
-            .parse()
-            .map_err(|_| CliError(format!("adresse IPv4 invalide : « {dst} »")))?;
         let id = self.device(dev)?;
+        let dst = match netsvc::parse_target(dst)? {
+            netsvc::Target::Ip(ip) => ip,
+            netsvc::Target::Name(name) => {
+                let then = netiv_core::dns::AfterResolve::Curl { port };
+                let (start, ip) = self.resolve_then(id, &name, then, out)?;
+                if ip.is_some() {
+                    print_l4_report(self.sim()?, start, out)?;
+                }
+                return Ok(());
+            }
+        };
         let sim = self.sim_mut()?;
         let start = sim.trace().len();
         sim.command(id, Command::Curl { dst, port })?;
@@ -597,11 +642,8 @@ impl Session {
 
     fn cmd_udp(&mut self, args: &[&str], out: &mut dyn Write) -> Result<(), CliError> {
         let [dev, dst, port, text @ ..] = args else {
-            return err("usage : udp <équipement> <ip> <port> [texte]");
+            return err("usage : udp <équipement> <ip|nom> <port> [texte]");
         };
-        let dst: Ipv4Addr = dst
-            .parse()
-            .map_err(|_| CliError(format!("adresse IPv4 invalide : « {dst} »")))?;
         let port = parse_port(port)?;
         let data = if text.is_empty() {
             "hello".to_string()
@@ -609,6 +651,17 @@ impl Session {
             text.join(" ")
         };
         let id = self.device(dev)?;
+        let dst = match netsvc::parse_target(dst)? {
+            netsvc::Target::Ip(ip) => ip,
+            netsvc::Target::Name(name) => {
+                let then = netiv_core::dns::AfterResolve::Udp { port, data };
+                let (start, ip) = self.resolve_then(id, &name, then, out)?;
+                if ip.is_some() {
+                    print_l4_report(self.sim()?, start, out)?;
+                }
+                return Ok(());
+            }
+        };
         let sim = self.sim_mut()?;
         let start = sim.trace().len();
         sim.command(id, Command::SendUdp { dst, port, data })?;
@@ -1023,9 +1076,26 @@ impl Session {
     }
 
     fn cmd_diagnose(&mut self, args: &[&str], out: &mut dyn Write) -> Result<(), CliError> {
+        if let [dev, target, rest @ ..] = args {
+            if let Ok(netsvc::Target::Name(name)) = netsvc::parse_target(target) {
+                let src = self.device(dev)?;
+                let service = match rest {
+                    [] => None,
+                    [proto, port] => Some((parse_l4(proto)?, parse_port(port)?)),
+                    _ => return err("usage : diagnose <équipement> <ip|nom> [tcp|udp <port>]"),
+                };
+                let sim = self.sim()?;
+                let base = self.baseline_ref();
+                let d = netiv_diagnostics::diagnose_name(sim, base, src, &name, service)?;
+                write!(out, "{}", d.render(base.is_some(), true))?;
+                self.hint_level = 0;
+                self.last_cause = d.cause;
+                return Ok(());
+            }
+        }
         let flow = if args.is_empty() {
             self.chaos.as_ref().map(|c| c.flow).ok_or_else(|| {
-                CliError("usage : diagnose <équipement> <ip> [tcp|udp <port>]".into())
+                CliError("usage : diagnose <équipement> <ip|nom> [tcp|udp <port>]".into())
             })?
         } else {
             self.parse_flow(args)?
@@ -1176,9 +1246,23 @@ impl Session {
 
     fn cmd_ip(&mut self, args: &[&str], out: &mut dyn Write) -> Result<(), CliError> {
         let [dev, iface, value] = args else {
-            return err("usage : ip <équipement> <interface> <cidr|none>");
+            return err("usage : ip <équipement> <interface> <cidr|none|dhcp>");
         };
         let id = self.device(dev)?;
+        if *value == "dhcp" {
+            let iface = self.sim()?.iface_id(id, iface)?;
+            return self.ip_to_dhcp(id, iface, out);
+        }
+        // Une adresse fixe remplace le DHCP sur cette interface.
+        {
+            let sim = self.sim_mut()?;
+            let iface_id = sim.iface_id(id, iface)?;
+            let dhcp = matches!(sim.device(id).map(|d| &d.behavior),
+                Some(netiv_core::device::Behavior::Ip(n)) if n.dhcp_ifaces.contains(&iface_id));
+            if dhcp {
+                sim.set_dhcp_client(id, iface_id, false)?;
+            }
+        }
         let ip = if *value == "none" {
             None
         } else {

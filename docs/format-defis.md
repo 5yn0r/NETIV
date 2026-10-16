@@ -61,12 +61,27 @@ Les équipements et interfaces sont désignés par leur nom (`R1`, `R1:eth1`).
 | `stop_service` | `device`, `proto`, `port` | `stop_service: { device: SERVER, proto: tcp, port: 80 }` |
 | `acl_insert` | `device`, `rule` (format de règle ACL) | `acl_insert: { device: R1, rule: { action: deny, proto: icmp } }` |
 | `acl_default` | `device`, `action` | `acl_default: { device: R1, action: deny }` |
+| `dhcp_server_down` | `device` | `dhcp_server_down: { device: SRV }` |
+| `dhcp_pools` | `device`, `pools` (format des plages de topologie ; vide = plus de serveur ; sur une machine sans serveur : serveur pirate) | `dhcp_pools: { device: IMP, pools: [{ network: 10.10.1.0/24, range: 10.10.1.200-10.10.1.220, gateway: 10.10.1.254 }] }` |
+| `dhcp_relay` | `iface` (`Routeur:interface`), `server` (absent = plus de relais) | `dhcp_relay: { iface: "R1:eth0" }` |
+| `set_dns` | `device`, `server` (absent = aucun) | `set_dns: { device: PC1, server: 10.10.2.99 }` |
+| `dns_record` | `device`, `name`, `ip` (absente = nom supprimé) | `dns_record: { device: SRV, name: web.lan, ip: 10.10.2.77 }` |
+| `dns_server_down` | `device` | `dns_server_down: { device: SRV }` |
+
+Une panne DHCP n'a d'effet que lorsque les clients redemandent une adresse : au démarrage d'un
+défi, les postes en DHCP redémarrent donc après l'injection des pannes (comme au matin d'une
+journée de travail). Après avoir réparé, l'élève doit faire `dhcp <poste> renew`.
+
+L'objectif d'un défi est une adresse IP : une panne DNS seule ne le casse pas. Les pannes DNS
+servent dans les cours, les cyber ranges ou combinées à d'autres pannes ; leur diagnostic se fait
+avec `diagnose <poste> <nom>`.
 
 ### Causes acceptées par `answer`
 
 `link-down`, `interface-down`, `packet-loss`, `high-latency`, `wrong-vlan`, `arp-mismatch`,
 `wrong-ip`, `wrong-mask`, `wrong-gateway`, `missing-route`, `wrong-route`, `routing-loop`,
-`forwarding-disabled`, `service-down`, `filtered`.
+`forwarding-disabled`, `service-down`, `filtered`, `dhcp-server-down`, `dhcp-relay-missing`,
+`dhcp-pool-exhausted`, `rogue-dhcp`, `dns-wrong-server`, `dns-server-down`, `dns-record-wrong`.
 
 ### Générer un défi
 
@@ -116,7 +131,7 @@ Champs d'un pas de trafic : `at_s` (départ, en secondes simulées), `from`, `to
 `every_ms` (délai entre deux envois, 1 000 par défaut).
 
 Comportements reconnus (`culprit.behavior`) : `port-scan`, `host-sweep`, `lateral-movement`,
-`beaconing`, `repeated-denials`, `arp-spoofing`.
+`beaconing`, `repeated-denials`, `arp-spoofing`, `rogue-dhcp`.
 
 `range check` réussit quand **tous** les `must_block` échouent **et** tous les `must_work`
 fonctionnent : bloquer l'attaque en coupant le trafic légitime ne compte pas.

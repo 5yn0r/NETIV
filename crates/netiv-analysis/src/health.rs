@@ -6,7 +6,7 @@
 //! | Catégorie | Mesure | Formule |
 //! |---|---|---|
 //! | Connectivity | paires de machines joignables **sans filtrage** (ce que le routage permet) | `100 × joignables / paires` |
-//! | Addressing | avertissements d'adressage (IP en double, passerelle ou route hors réseau, câble entre réseaux différents) | `100 − 20 × avertissements` |
+//! | Addressing | avertissements d'adressage (IP en double, passerelle ou route hors réseau, câble entre réseaux différents), postes DHCP sans adresse | `100 − 20 × avertissements − 20 × postes sans bail` |
 //! | Routing | routes utilisables, symétrie des échanges | `100 × utilisables / configurées − 10 × paires asymétriques` |
 //! | Segmentation | défauts SEC-001/002/003/005/006 de l'analyseur | `100 − (40, 35, 20, 25, 25)` selon les défauts présents |
 //! | Availability | points uniques de défaillance, composants en panne | `100 − 20 × routeur/pare-feu unique − 8 × switch unique − 10 × composant en panne` |
@@ -136,7 +136,24 @@ pub fn health(sim: &Simulation) -> HealthReport {
                 || w.contains("réseaux différents")
         })
         .collect();
-    let addressing = clamp(100 - 20 * warnings.len() as i64);
+    // Postes configurés par DHCP restés sans adresse.
+    let mut no_lease: Vec<String> = Vec::new();
+    for d in sim.devices() {
+        if let Behavior::Ip(n) = &d.behavior {
+            for i in &n.dhcp_ifaces {
+                if d.iface(*i)
+                    .is_some_and(|x| x.ip.is_none() && x.link.is_some())
+                {
+                    no_lease.push(format!(
+                        "{}/{}",
+                        d.name,
+                        d.iface(*i).map_or("?", |x| x.name.as_str())
+                    ));
+                }
+            }
+        }
+    }
+    let addressing = clamp(100 - 20 * warnings.len() as i64 - 20 * no_lease.len() as i64);
 
     // --- Routing -------------------------------------------------------------
     let mut configured = 0usize;
@@ -264,7 +281,14 @@ pub fn health(sim: &Simulation) -> HealthReport {
                 name: "Addressing",
                 score: addressing,
                 weight: 10,
-                notes: warnings,
+                notes: warnings
+                    .into_iter()
+                    .chain(
+                        no_lease
+                            .iter()
+                            .map(|x| format!("{x} : aucune adresse obtenue par DHCP (−20)")),
+                    )
+                    .collect(),
             },
             Category {
                 name: "Routing",

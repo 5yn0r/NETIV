@@ -4,7 +4,7 @@
 //! pour les challenges, où l'élève doit la découvrir). Chaque injection garde
 //! un instantané de ce qu'elle modifie : la réparer, c'est le restaurer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use serde::{Deserialize, Serialize};
@@ -127,6 +127,49 @@ pub enum Fault {
         /// Nouvelle politique.
         action: AclAction,
     },
+    /// Le serveur DHCP s'arrête.
+    DhcpServerDown {
+        /// Équipement qui héberge le serveur.
+        device: DeviceId,
+    },
+    /// Les plages d'un serveur DHCP changent (plage réduite, absente…) ; sur
+    /// un équipement sans serveur, en installe un (serveur pirate).
+    DhcpPools {
+        /// Équipement.
+        device: DeviceId,
+        /// Nouvelles plages (vide : plus de serveur).
+        pools: Vec<crate::dhcp::DhcpPool>,
+    },
+    /// Le relais DHCP d'une interface de routeur change ou disparaît.
+    DhcpRelay {
+        /// Routeur.
+        device: DeviceId,
+        /// Interface.
+        iface: IfaceId,
+        /// Serveur visé (`None` : plus de relais).
+        server: Option<Ipv4Addr>,
+    },
+    /// Mauvais serveur DNS sur un équipement.
+    SetDns {
+        /// Équipement.
+        device: DeviceId,
+        /// Serveur configuré (`None` : aucun).
+        server: Option<Ipv4Addr>,
+    },
+    /// Enregistrement DNS modifié ou supprimé.
+    DnsRecord {
+        /// Serveur DNS.
+        device: DeviceId,
+        /// Nom.
+        name: String,
+        /// Nouvelle adresse (`None` : nom supprimé).
+        ip: Option<Ipv4Addr>,
+    },
+    /// Le serveur DNS s'arrête.
+    DnsServerDown {
+        /// Équipement qui héberge le serveur.
+        device: DeviceId,
+    },
     /// Plusieurs pannes simultanées.
     Multi(Vec<Fault>),
 }
@@ -157,7 +200,13 @@ impl Fault {
             | Fault::PortMode { device, .. }
             | Fault::StopService { device, .. }
             | Fault::AclInsert { device, .. }
-            | Fault::AclDefault { device, .. } => vec![Target::Device(*device)],
+            | Fault::AclDefault { device, .. }
+            | Fault::DhcpServerDown { device }
+            | Fault::DhcpPools { device, .. }
+            | Fault::DhcpRelay { device, .. }
+            | Fault::SetDns { device, .. }
+            | Fault::DnsRecord { device, .. }
+            | Fault::DnsServerDown { device } => vec![Target::Device(*device)],
             Fault::Multi(list) => {
                 let mut all: Vec<Target> = list.iter().flat_map(Fault::targets).collect();
                 all.sort();
@@ -184,11 +233,17 @@ struct IpConfig {
     services: Vec<Service>,
     static_arp: BTreeMap<Ipv4Addr, MacAddr>,
     acl: Acl,
+    dhcp_ifaces: BTreeSet<IfaceId>,
+    dhcp_relay: BTreeMap<IfaceId, Ipv4Addr>,
+    /// Serveur DHCP : actif ?, plages. Les baux (état dynamique) n'en font pas partie.
+    dhcp_server: Option<(bool, Vec<crate::dhcp::DhcpPool>)>,
+    dns: Option<Ipv4Addr>,
+    dns_server: Option<crate::dns::DnsServer>,
 }
 
 #[derive(Clone, Debug)]
 enum Snapshot {
-    Device(DeviceId, DeviceConfig),
+    Device(DeviceId, Box<DeviceConfig>),
     Link(LinkId, bool, f64, SimTime),
 }
 
@@ -419,8 +474,21 @@ impl Simulation {
                     | Fault::StaticArp { device, .. }
                     | Fault::StopService { device, .. }
                     | Fault::AclInsert { device, .. }
-                    | Fault::AclDefault { device, .. } => {
+                    | Fault::AclDefault { device, .. }
+                    | Fault::DhcpServerDown { device }
+                    | Fault::DhcpPools { device, .. }
+                    | Fault::DhcpRelay { device, .. }
+                    | Fault::SetDns { device, .. }
+                    | Fault::DnsRecord { device, .. }
+                    | Fault::DnsServerDown { device } => {
                         let dev = self.dev_ref(*device)?;
+                        if let Fault::DhcpRelay { iface, .. } = fault {
+                            dev.iface(*iface)
+                                .ok_or_else(|| NetivError::UnknownInterface {
+                                    device: dev.name.clone(),
+                                    iface: iface.to_string(),
+                                })?;
+                        }
                         if matches!(dev.behavior, Behavior::Switch(_)) {
                             return Err(NetivError::NotAnIpDevice(dev.name.clone()));
                         }
@@ -456,6 +524,14 @@ impl Simulation {
                                 services: n.services.clone(),
                                 static_arp: n.static_arp.clone(),
                                 acl,
+                                dhcp_ifaces: n.dhcp_ifaces.clone(),
+                                dhcp_relay: n.dhcp_relay.clone(),
+                                dhcp_server: n
+                                    .dhcp_server
+                                    .as_ref()
+                                    .map(|srv| (srv.enabled, srv.pools.clone())),
+                                dns: n.dns,
+                                dns_server: n.dns_server.clone(),
                             }),
                             None,
                         )
@@ -464,11 +540,11 @@ impl Simulation {
                 };
                 Some(Snapshot::Device(
                     d,
-                    DeviceConfig {
+                    Box::new(DeviceConfig {
                         ifaces: dev.ifaces.iter().map(|i| (i.ip, i.admin_up)).collect(),
                         ip,
                         ports,
-                    },
+                    }),
                 ))
             }
         }
@@ -499,6 +575,22 @@ impl Simulation {
                         n.services = c.services.clone();
                         n.static_arp = c.static_arp.clone();
                         n.acl = c.acl.clone();
+                        n.dhcp_ifaces = c.dhcp_ifaces.clone();
+                        n.dhcp_relay = c.dhcp_relay.clone();
+                        match (&c.dhcp_server, &mut n.dhcp_server) {
+                            (None, slot) => *slot = None,
+                            (Some((on, pools)), Some(srv)) => {
+                                srv.enabled = *on;
+                                srv.pools = pools.clone();
+                            }
+                            (Some((on, pools)), slot) => {
+                                let mut srv = crate::dhcp::DhcpServer::new(pools.clone());
+                                srv.enabled = *on;
+                                *slot = Some(srv);
+                            }
+                        }
+                        n.dns = c.dns;
+                        n.dns_server = c.dns_server.clone();
                     }
                     (Behavior::Switch(s), _, Some(p)) => {
                         s.ports = p.clone();
@@ -568,6 +660,50 @@ impl Simulation {
                 let n = self.ip_cfg(*device)?;
                 n.acl.default = *action;
                 n.acl.reset_tracking();
+            }
+            Fault::DhcpServerDown { device } => {
+                if let Some(srv) = &mut self.ip_cfg(*device)?.dhcp_server {
+                    srv.enabled = false;
+                }
+            }
+            Fault::DhcpPools { device, pools } => {
+                let n = self.ip_cfg(*device)?;
+                if pools.is_empty() {
+                    n.dhcp_server = None;
+                } else {
+                    match &mut n.dhcp_server {
+                        Some(srv) => srv.pools = pools.clone(),
+                        None => n.dhcp_server = Some(crate::dhcp::DhcpServer::new(pools.clone())),
+                    }
+                }
+            }
+            Fault::DhcpRelay {
+                device,
+                iface,
+                server,
+            } => {
+                let n = self.ip_cfg(*device)?;
+                match server {
+                    Some(s) => n.dhcp_relay.insert(*iface, *s),
+                    None => n.dhcp_relay.remove(iface),
+                };
+            }
+            Fault::SetDns { device, server } => self.ip_cfg(*device)?.dns = *server,
+            Fault::DnsRecord { device, name, ip } => {
+                let key = crate::dns::normalize(name);
+                let srv = self
+                    .ip_cfg(*device)?
+                    .dns_server
+                    .get_or_insert_with(|| crate::dns::DnsServer::new(BTreeMap::new()));
+                match ip {
+                    Some(a) => srv.zone.insert(key, *a),
+                    None => srv.zone.remove(&key),
+                };
+            }
+            Fault::DnsServerDown { device } => {
+                if let Some(srv) = &mut self.ip_cfg(*device)?.dns_server {
+                    srv.enabled = false;
+                }
             }
         }
         Ok(())
@@ -711,6 +847,36 @@ impl Simulation {
                     dn(device)
                 )
             }
+            Fault::DhcpServerDown { device } => format!("{} : serveur DHCP arrêté", dn(device)),
+            Fault::DhcpPools { device, pools } => {
+                if pools.is_empty() {
+                    format!("{} : serveur DHCP supprimé", dn(device))
+                } else {
+                    let list = pools
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ; ");
+                    format!("{} : serveur DHCP avec les plages {list}", dn(device))
+                }
+            }
+            Fault::DhcpRelay {
+                device,
+                iface,
+                server,
+            } => match server {
+                Some(srv) => format!("{} : relais DHCP vers {srv}", inn(device, iface)),
+                None => format!("{} : relais DHCP supprimé", inn(device, iface)),
+            },
+            Fault::SetDns { device, server } => {
+                let after = server.map_or("aucun".to_string(), |s| s.to_string());
+                format!("{} : serveur DNS {after}", dn(device))
+            }
+            Fault::DnsRecord { device, name, ip } => match ip {
+                Some(a) => format!("{} : enregistrement DNS {name} = {a}", dn(device)),
+                None => format!("{} : enregistrement DNS {name} supprimé", dn(device)),
+            },
+            Fault::DnsServerDown { device } => format!("{} : serveur DNS arrêté", dn(device)),
             Fault::Multi(list) => list
                 .iter()
                 .map(|f| self.describe_fault(f))

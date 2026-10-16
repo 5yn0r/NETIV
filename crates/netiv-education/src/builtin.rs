@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use crate::challenge::Challenge;
 
 /// Noms des réseaux livrés.
-pub const TOPOLOGY_NAMES: [&str; 5] = ["office", "dmz", "campus", "triangle", "cyber"];
+pub const TOPOLOGY_NAMES: [&str; 6] = ["office", "dmz", "campus", "triangle", "cyber", "dhcp"];
 
 /// Texte YAML d'un réseau livré.
 pub fn topology(name: &str) -> Option<&'static str> {
@@ -15,11 +15,12 @@ pub fn topology(name: &str) -> Option<&'static str> {
         "campus" => include_str!("../content/topologies/campus.yaml"),
         "triangle" => include_str!("../content/topologies/triangle.yaml"),
         "cyber" => include_str!("../../../examples/cyber.yaml"),
+        "dhcp" => include_str!("../content/topologies/dhcp.yaml"),
         _ => return None,
     })
 }
 
-const CHALLENGE_SOURCES: [(&str, &str); 15] = [
+const CHALLENGE_SOURCES: [(&str, &str); 18] = [
     (
         "beginner/01-passerelle",
         include_str!("../content/challenges/beginner/01-passerelle.yaml"),
@@ -80,10 +81,22 @@ const CHALLENGE_SOURCES: [(&str, &str); 15] = [
         "advanced/15-perte",
         include_str!("../content/challenges/advanced/15-perte.yaml"),
     ),
+    (
+        "beginner/16-dhcp-serveur",
+        include_str!("../content/challenges/beginner/16-dhcp-serveur.yaml"),
+    ),
+    (
+        "intermediate/17-dhcp-relais",
+        include_str!("../content/challenges/intermediate/17-dhcp-relais.yaml"),
+    ),
+    (
+        "advanced/18-dhcp-pirate",
+        include_str!("../content/challenges/advanced/18-dhcp-pirate.yaml"),
+    ),
 ];
 
 /// Challenges livrés, dans l'ordre. Un fichier illisible est ignoré ici et
-/// signalé par les tests (qui exigent que les 15 soient présents).
+/// signalé par les tests (qui exigent qu'ils soient tous présents).
 pub fn challenges() -> &'static [Challenge] {
     static CACHE: OnceLock<Vec<Challenge>> = OnceLock::new();
     CACHE.get_or_init(|| {

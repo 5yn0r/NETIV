@@ -205,7 +205,7 @@ impl Session {
         )?;
         writeln!(
             out,
-            "Comportements : port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials."
+            "Comportements : port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials, rogue-dhcp."
         )?;
         Ok(())
     }
@@ -255,7 +255,7 @@ impl Session {
     ) -> Result<(), CliError> {
         if parse_behavior(behavior).is_none() {
             return err(format!(
-                "comportement inconnu : « {behavior} » (port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials)"
+                "comportement inconnu : « {behavior} » (port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials, rogue-dhcp)"
             ));
         }
         let Some(run) = self.range_run.as_mut() else {
