@@ -28,13 +28,14 @@ use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{HeaderValue, Request, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use netiv_analysis::{DocFormat, generate_docs, health, what_if};
-use netiv_cli::Session;
+use netiv_cli::{EditError, Session};
 use netiv_core::TraceId;
 use netiv_education::{builtin, learn};
 use netiv_security::analyze;
+use netiv_topology::{Bundle, BundleMeta, Layout, NetworkDef, TopologyDef};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -42,6 +43,12 @@ use serde_json::{Value, json};
 pub const MAX_LABS: usize = 16;
 /// Longueur maximale d'une ligne de commande.
 pub const MAX_LINE: usize = 1_000;
+/// Longueur maximale d'un nom de réseau créé depuis l'interface.
+pub const MAX_NAME: usize = 60;
+/// Nombre maximal d'équipements d'une topologie envoyée par l'éditeur.
+pub const MAX_DEVICES: usize = 2_000;
+/// Nombre maximal de câbles d'une topologie envoyée par l'éditeur.
+pub const MAX_LINKS: usize = 4_000;
 /// Taille maximale d'une requête.
 pub const MAX_BODY: usize = 1 << 20;
 
@@ -238,6 +245,13 @@ pub fn router(cfg: ApiConfig) -> Router {
         .route("/api/labs/{id}/security", get(lab_security))
         .route("/api/labs/{id}/docs", get(lab_docs))
         .route("/api/labs/{id}/what-if", post(lab_what_if))
+        .route(
+            "/api/labs/{id}/topology",
+            get(get_topology).put(put_topology),
+        )
+        .route("/api/labs/{id}/topology/validate", post(validate_topology))
+        .route("/api/labs/{id}/topology/autoconfig", post(autoconfig))
+        .route("/api/labs/{id}/positions", put(put_positions))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(state.clone(), host_guard))
@@ -323,7 +337,7 @@ async fn library(State(st): State<AppState>) -> Json<Value> {
         "causes": netiv_diagnostics::CauseKind::ALL.iter().map(|k| json!({
             "slug": k.slug(), "label": k.label(),
         })).collect::<Vec<_>>(),
-        "behaviors": ["port-scan", "host-sweep", "lateral-movement", "beaconing", "arp-spoofing", "repeated-denials"],
+        "behaviors": ["port-scan", "host-sweep", "lateral-movement", "beaconing", "arp-spoofing", "repeated-denials", "rogue-dhcp"],
         "generator": {
             "types": netiv_topology::generate::TopoKind::ALL.map(netiv_topology::generate::TopoKind::slug),
             "topics": netiv_education::generate::TOPICS,
@@ -383,6 +397,8 @@ async fn list_labs(State(st): State<AppState>) -> Json<Value> {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CreateLab {
+    /// Réseau vide, à construire dans l'éditeur (valeur : son nom).
+    empty: Option<String>,
     builtin: Option<String>,
     yaml: Option<String>,
     generate: Option<GenerateTopology>,
@@ -442,6 +458,7 @@ fn token(s: &str, what: &str) -> Result<String, ApiError> {
 
 async fn create_lab(State(st): State<AppState>, Json(body): Json<CreateLab>) -> ApiResult {
     let sources = [
+        body.empty.is_some(),
         body.builtin.is_some(),
         body.yaml.is_some(),
         body.generate.is_some(),
@@ -455,7 +472,7 @@ async fn create_lab(State(st): State<AppState>, Json(body): Json<CreateLab>) -> 
     .count();
     if sources != 1 {
         return Err(ApiError::bad(
-            "indique exactement une source : builtin, yaml, generate, challenge, range, lab ou generate_challenge",
+            "indique exactement une source : empty, builtin, yaml, generate, challenge, range, lab ou generate_challenge",
         ));
     }
     if st.labs().len() >= MAX_LABS {
@@ -472,7 +489,27 @@ async fn create_lab(State(st): State<AppState>, Json(body): Json<CreateLab>) -> 
             .map_err(|e| ApiError::bad(e.to_string()))
     };
 
-    if let Some(name) = &body.builtin {
+    if let Some(name) = &body.empty {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > MAX_NAME {
+            return Err(ApiError::bad(format!(
+                "nom de réseau invalide (1 à {MAX_NAME} caractères)"
+            )));
+        }
+        let def = TopologyDef {
+            network: NetworkDef {
+                name: name.to_string(),
+                seed: 1,
+            },
+            devices: Vec::new(),
+            links: Vec::new(),
+        };
+        session.apply_topology(&def).map_err(edit_error)?;
+        out.extend_from_slice(
+            format!("Réseau vide « {name} » créé : ajoute des équipements depuis l'éditeur.\n")
+                .as_bytes(),
+        );
+    } else if let Some(name) = &body.builtin {
         let text = builtin::topology(name)
             .ok_or_else(|| ApiError::bad(format!("réseau inconnu : « {name} »")))?;
         session
@@ -696,6 +733,139 @@ async fn lab_security(State(st): State<AppState>, Path(id): Path<String>) -> Api
             })).collect::<Vec<_>>(),
             "text": r.render(),
         })))
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Éditeur de réseau
+// ---------------------------------------------------------------------------
+
+/// Erreur d'édition → réponse HTTP : 409 si le lab est verrouillé (défi en
+/// cours), 400 avec la liste des problèmes si la topologie est invalide.
+fn edit_error(e: EditError) -> ApiError {
+    match e {
+        EditError::Locked(why) => ApiError(StatusCode::CONFLICT, why),
+        EditError::Invalid(errors) => {
+            ApiError::bad(format!("topologie invalide :\n- {}", errors.join("\n- ")))
+        }
+    }
+}
+
+/// Une topologie envoyée par l'éditeur.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TopologyBody {
+    topology: TopologyDef,
+}
+
+fn check_size(def: &TopologyDef) -> Result<(), ApiError> {
+    if def.devices.len() > MAX_DEVICES || def.links.len() > MAX_LINKS {
+        return Err(ApiError::bad(format!(
+            "topologie trop grande (au plus {MAX_DEVICES} équipements et {MAX_LINKS} câbles)"
+        )));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct TopologyQuery {
+    format: Option<String>,
+}
+
+/// La topologie du lab : JSON (éditeur), ou texte YAML / `.netiv` à télécharger.
+async fn get_topology(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<TopologyQuery>,
+) -> ApiResult {
+    let author = st.0.cfg.profile_name.clone();
+    with_lab(&st, &id, |s| {
+        let def = s
+            .topology_def()
+            .ok_or_else(|| ApiError::bad("aucun réseau chargé"))?;
+        match q.format.as_deref().unwrap_or("json") {
+            "json" => Ok(Json(json!({ "topology": def }))),
+            "yaml" => {
+                let text =
+                    serde_yaml_ng::to_string(&def).map_err(|e| ApiError::bad(e.to_string()))?;
+                Ok(Json(json!({ "format": "yaml", "text": text })))
+            }
+            "netiv" => {
+                let meta = BundleMeta {
+                    title: def.network.name.clone(),
+                    description: String::new(),
+                    author,
+                };
+                let text = Bundle::new(meta, def)
+                    .to_yaml()
+                    .map_err(|e| ApiError::bad(e.to_string()))?;
+                Ok(Json(json!({ "format": "netiv", "text": text })))
+            }
+            other => Err(ApiError::bad(format!(
+                "format inconnu : « {other} » (json, yaml ou netiv)"
+            ))),
+        }
+    })
+}
+
+/// Remplace le réseau du lab (reconstruction : la trace repart de zéro).
+async fn put_topology(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<TopologyBody>,
+) -> ApiResult {
+    check_size(&body.topology)?;
+    with_lab(&st, &id, |s| {
+        let warnings = s.apply_topology(&body.topology).map_err(edit_error)?;
+        Ok(Json(json!({
+            "warnings": warnings,
+            "snapshot": snapshot::snapshot(&id, s),
+        })))
+    })
+}
+
+/// Vérifie une topologie sans rien modifier.
+async fn validate_topology(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<TopologyBody>,
+) -> ApiResult {
+    check_size(&body.topology)?;
+    // Le lab doit exister (cohérence des URL), mais n'est pas modifié.
+    with_lab(&st, &id, |_| Ok(()))?;
+    let (errors, warnings) = Session::validate_topology(&body.topology);
+    Ok(Json(json!({ "errors": errors, "warnings": warnings })))
+}
+
+/// Complète l'adressage (IP, passerelles, routes).
+async fn autoconfig(State(st): State<AppState>, Path(id): Path<String>) -> ApiResult {
+    with_lab(&st, &id, |s| {
+        let changes = s.autoconfigure().map_err(edit_error)?;
+        Ok(Json(json!({
+            "changes": changes,
+            "snapshot": snapshot::snapshot(&id, s),
+        })))
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PositionsBody {
+    positions: Layout,
+}
+
+/// Mémorise la position des équipements sur le schéma (sans reconstruire).
+async fn put_positions(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<PositionsBody>,
+) -> ApiResult {
+    if body.positions.len() > MAX_DEVICES {
+        return Err(ApiError::bad("trop de positions"));
+    }
+    with_lab(&st, &id, |s| {
+        s.set_positions(&body.positions);
+        Ok(Json(json!({ "saved": body.positions.len() })))
     })
 }
 

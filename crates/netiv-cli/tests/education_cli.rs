@@ -87,11 +87,11 @@ fn completing_every_challenge_unlocks_every_badge_and_the_top_level() {
         );
     }
     assert_eq!(s.profile().badges.len(), netiv_education::BADGES.len());
-    // 5×100 + 5×150 + 5×200 = 2250 XP → niveau 6.
-    assert_eq!(s.profile().xp(), 2_250);
+    // 6×100 + 6×150 + 6×200 = 2700 XP → niveau 6.
+    assert_eq!(s.profile().xp(), 2_700);
     let dash = run(&mut s, "dashboard");
     assert!(dash.contains("Niveau 6 « Expert »"), "{dash}");
-    assert!(dash.contains("Challenges réussis : 15 / 18"), "{dash}");
+    assert!(dash.contains("Challenges réussis : 18 / 21"), "{dash}");
     assert!(dash.contains("100%"), "{dash}");
     let badges = run(&mut s, "badges");
     assert_eq!(badges.matches('🏅').count(), 6, "{badges}");
@@ -283,12 +283,12 @@ fn a_better_second_attempt_only_adds_the_difference() {
 fn challenge_list_filters_by_topic_and_difficulty() {
     let (mut s, _) = session();
     let all = run(&mut s, "challenge list");
-    assert_eq!(all.lines().count(), 1 + 15);
+    assert_eq!(all.lines().count(), 1 + 18);
     let routing = run(&mut s, "challenge list routing");
     assert_eq!(routing.lines().count(), 1 + 4, "{routing}");
     assert!(routing.lines().skip(1).all(|l| l.contains("Routage")));
     let hard = run(&mut s, "challenge list difficile");
-    assert_eq!(hard.lines().count(), 1 + 5, "{hard}");
+    assert_eq!(hard.lines().count(), 1 + 6, "{hard}");
     assert!(run(&mut s, "challenge list zzz").contains("aucun challenge"));
 }
 
@@ -392,7 +392,7 @@ fn learning_path_progress_follows_reading_and_challenges() {
     let (mut s, _) = session();
     let list = run(&mut s, "learn");
     assert!(
-        list.contains("fundamentals") && list.contains("0/10"),
+        list.contains("fundamentals") && list.contains("0/11"),
         "{list}"
     );
     let path = run(&mut s, "learn fundamentals");
@@ -400,11 +400,11 @@ fn learning_path_progress_follows_reading_and_challenges() {
 
     let lesson = run(&mut s, "learn read 1");
     assert!(
-        lesson.contains("LEÇON 1/10") && lesson.contains("Leçon validée"),
+        lesson.contains("LEÇON 1/11") && lesson.contains("Leçon validée"),
         "{lesson}"
     );
     assert!(run(&mut s, "learn read arp").contains("ARP"));
-    assert!(run(&mut s, "learn fundamentals").contains("Progression : 2/10"));
+    assert!(run(&mut s, "learn fundamentals").contains("Progression : 2/11"));
 
     // Une leçon à challenges ne se valide pas en la lisant.
     let l = run(&mut s, "learn read ipv4");
@@ -412,7 +412,7 @@ fn learning_path_progress_follows_reading_and_challenges() {
         !l.contains("Leçon validée") && l.contains("beginner-04"),
         "{l}"
     );
-    assert!(run(&mut s, "learn next").contains("LEÇON 3/10"));
+    assert!(run(&mut s, "learn next").contains("LEÇON 3/11"));
     run(&mut s, "challenge start beginner-04");
     run(&mut s, "ip PC1 eth0 192.168.1.10/24");
     run(&mut s, "challenge check");

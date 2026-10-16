@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 netiv-core = { workspace = true }
 netiv-topology = { workspace = true }
+serde_yaml_ng = { workspace = true }
 netiv-diagnostics = { workspace = true }
 netiv-security = { workspace = true }
 netiv-analysis = { workspace = true }

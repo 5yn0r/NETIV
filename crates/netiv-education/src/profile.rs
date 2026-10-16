@@ -580,7 +580,7 @@ mod tests {
             "ordre des thèmes : {text}"
         );
         assert!(text.contains("Routage") && text.contains("0%"), "{text}");
-        assert!(text.contains("Challenges réussis : 2 / 18"), "{text}");
+        assert!(text.contains("Challenges réussis : 2 / 21"), "{text}");
         assert!(text.contains("Network Beginner"), "{text}");
     }
 

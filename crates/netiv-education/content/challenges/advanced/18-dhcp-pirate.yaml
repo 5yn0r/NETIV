@@ -1,0 +1,29 @@
+id: advanced-06
+title: Le serveur DHCP clandestin
+topic: security
+difficulty: hard
+description: |
+  Les postes du bureau ont bien une adresse IP, mais plus rien ne sort du
+  réseau local : PC1 ne joint plus le serveur 10.10.2.10. Rien n'a changé sur
+  le routeur ni sur le serveur. Un technicien a branché « une imprimante
+  toute neuve » hier soir… Trouve l'origine du problème et rétablis la situation.
+time_limit_minutes: 25
+topology_ref: dhcp
+objective: { from: PC1, to: 10.10.2.10 }
+faults:
+  - dhcp_pools:
+      device: IMP
+      pools:
+        - { network: 10.10.1.0/24, range: 10.10.1.200-10.10.1.220, gateway: 10.10.1.254, dns: 10.10.1.50 }
+solution:
+  cause: rogue-dhcp
+  device: IMP
+  explanation: |
+    L'imprimante IMP fait tourner un serveur DHCP. Sur le réseau du bureau, elle
+    répond plus vite que le vrai serveur (qui passe par le relais de R1) : les
+    postes acceptent sa proposition, avec une passerelle 10.10.1.254 qui
+    n'existe pas. C'est l'attaque (ou l'erreur) du « serveur DHCP pirate ». On
+    coupe le service sur l'imprimante, puis les postes renouvellent leur bail
+    auprès du vrai serveur. En entreprise, le « DHCP snooping » des switches
+    bloque ce genre de serveur.
+  commands: ["dhcp server IMP off", "dhcp PC1 renew"]

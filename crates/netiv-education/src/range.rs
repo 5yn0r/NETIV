@@ -134,6 +134,10 @@ impl RangeScenario {
                 .inject_fault(f, false)
                 .map_err(|e| format!("panne n°{} : {e}", n + 1))?;
         }
+        // Les clients DHCP redemandent leur adresse, pannes comprises.
+        if loaded.sim.has_dhcp_clients() {
+            loaded.sim.restart_dhcp().map_err(|e| e.to_string())?;
+        }
         self.schedule_traffic(&mut loaded.sim)?;
         loaded.sim.run_until_idle().map_err(|e| e.to_string())?;
 
@@ -293,6 +297,10 @@ pub fn parse_behavior(text: &str) -> Option<Behavior> {
         (
             Behavior::ArpConflict,
             ["arp-spoofing", "usurpation-arp", "arp-conflict"],
+        ),
+        (
+            Behavior::RogueDhcp,
+            ["rogue-dhcp", "dhcp-pirate", "serveur-dhcp-pirate"],
         ),
     ]
     .iter()

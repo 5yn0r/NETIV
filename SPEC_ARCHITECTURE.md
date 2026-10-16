@@ -708,3 +708,34 @@ Diagnostic +40, correction +40, temps +20 (décroissance linéaire sur le temps 
 | `Box` des grosses variantes de trace | **non retenu** | Événement de 144 → 96 octets, mais mémoire maximale mesurée en hausse. |
 | Mesure | `netiv bench` (réseau généré, graine fixe) | Référence reproductible avant / après ; chiffres dans `docs/performance.md`. |
 | Interface | grille CSS pilotée par variables (`--side-w`, `--panel-w`, `--console-h`, `--font-scale`), poignées `role="separator"` utilisables au clavier, zoom par `viewBox`, réglages en `localStorage` (protégé par `try/catch`) | Pas de framework ni d'étape de build ; la page reste correcte sans stockage. |
+
+## Annexe D — v0.4 : éditeur de réseau, DHCP et DNS
+
+### Éditeur
+| Sujet | Choix | Raison |
+|---|---|---|
+| Modèle d'édition | L'éditeur modifie la description (`TopologyDef`) ; chaque modification validée reconstruit le lab | Le moteur sait ajouter mais pas retirer ; une reconstruction coûte environ 1 ms et réutilise la validation des fichiers. |
+| Positions | `DeviceDef.pos` facultatif, conservé par la session et exporté | Un lab partagé s'ouvre avec la même disposition. |
+| Verrou | Modification refusée (409) pendant un défi ou un cyber range | Redessiner le réseau serait une triche. |
+| Adressage automatique | `autoconf` : segments L2 (VLAN compris), /30 entre routeurs, /24 sinon, routes par BFS ; ne remplace jamais une valeur | Testé : tout réseau généré, vidé puis auto-adressé, est entièrement joignable. |
+
+### DHCP
+| Sujet | Choix | Raison |
+|---|---|---|
+| Messages | `UdpPayload::{Text, Dhcp, Dns}` remplace le texte libre des datagrammes | Messages structurés, lisibles dans le Packet Microscope. |
+| Diffusion IP | 255.255.255.255 (et diffusion dirigée) livrée localement, jamais transférée | Comportement réel ; motive le relais. |
+| Adresse du client | Nouvel effet `Effect::ConfigureIface` | Les équipements ne modifient pas le monde directement. |
+| Renouvellement | Aucun timer récurrent (pas de T1/T2) ; bail valable toute la session | `run_until_idle` doit toujours se terminer. |
+| Baux | Font partie de l'état durable du serveur (conservés par `fresh_clone`) ; les offres en cours non | Une sonde ne doit pas redistribuer une adresse déjà prise. |
+| Démarrage | `build()` lance `restart_dhcp()` : les échanges DHCP sont les premières transactions | Les postes ont une adresse avant la première commande. |
+| Pannes | Agissent quand les clients redemandent une adresse : défis, ranges et Chaos Engine redémarrent les clients après injection (et après réparation) | Comme au redémarrage des postes. |
+| Diagnostic | Domaine L2 du client → serveur local ou relais → état du serveur → plage → DORA rejoué dans une copie ; chemin relais → serveur par le diagnostic IP | Raisonnement d'administrateur, réutilise l'existant. |
+
+### DNS
+| Sujet | Choix | Raison |
+|---|---|---|
+| Zone | Enregistrements A, une question par message, pas de récursion | Suffisant pour enseigner la résolution et ses pannes. |
+| Client | Serveur configuré prioritaire sur celui reçu par DHCP ; cache 300 s (vidé par `reset_runtime`) | Montre l'intérêt du cache (2ᵉ résolution sans question). |
+| Commandes | `ping`, `curl`, `udp` acceptent un nom (`Command::Resolve` puis la commande) | Une seule transaction DNS visible avant l'échange. |
+| Diagnostic | `diagnose <poste> <nom>` : résolution dans une copie, puis diagnostic IP vers l'adresse trouvée | |
+| Limites | L'objectif d'un défi est une IP ; le Chaos Engine casse des flux IP : les pannes DNS se diagnostiquent par nom mais n'ont pas de modèle chaos | Documenté dans `docs/format-defis.md`. |

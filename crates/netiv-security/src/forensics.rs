@@ -198,6 +198,8 @@ pub enum Behavior {
     RepeatedDenials,
     /// Une adresse IP annoncée par plusieurs adresses MAC.
     ArpConflict,
+    /// Un serveur DHCP non autorisé distribue des adresses.
+    RogueDhcp,
     /// Modification de configuration.
     ConfigChange,
 }
@@ -212,6 +214,7 @@ impl Behavior {
             Behavior::Beaconing => "beaconing",
             Behavior::RepeatedDenials => "repeated-denials",
             Behavior::ArpConflict => "arp-spoofing",
+            Behavior::RogueDhcp => "rogue-dhcp",
             Behavior::ConfigChange => "config-change",
         }
     }
@@ -331,6 +334,7 @@ pub fn analyze_capture(cap: &Capture) -> Analysis {
     detect_beaconing(cap, &flows, &mut findings);
     detect_denials(cap, &mut findings);
     detect_arp_conflicts(cap, &mut findings);
+    detect_rogue_dhcp(cap, &mut findings);
     detect_config_changes(cap, &mut findings);
     findings.sort_by_key(|a| (a.level, a.first, a.behavior));
 
@@ -645,6 +649,61 @@ fn detect_arp_conflicts(cap: &Capture, out: &mut Vec<ForensicFinding>) {
                 last,
             });
         }
+    }
+}
+
+/// Serveurs DHCP qui ont répondu à des clients : un serveur sur une machine
+/// d'utilisateur, ou plusieurs serveurs qui se disputent un même client.
+fn detect_rogue_dhcp(cap: &Capture, out: &mut Vec<ForensicFinding>) {
+    use netiv_core::dhcp::DhcpEvent;
+    // serveur → (clients servis, première et dernière réponse)
+    let mut servers: BTreeMap<DeviceId, (BTreeSet<String>, SimTime, SimTime)> = BTreeMap::new();
+    for e in &cap.events {
+        if let TraceKind::Dhcp {
+            event: DhcpEvent::ServerOffer { mac, .. } | DhcpEvent::ServerAck { mac, .. },
+            ..
+        } = &e.kind
+        {
+            let entry = servers
+                .entry(e.device)
+                .or_insert((BTreeSet::new(), e.time, e.time));
+            entry.0.insert(mac.to_string());
+            entry.2 = e.time;
+        }
+    }
+    let user_role = |d: DeviceId| {
+        cap.devices
+            .iter()
+            .find(|x| x.id == d)
+            .is_some_and(|x| matches!(x.role.as_str(), "user" | "guest" | "iot"))
+    };
+    let several = servers.len() > 1;
+    for (d, (clients, first, last)) in &servers {
+        if !user_role(*d) {
+            continue;
+        }
+        let others: Vec<String> = servers
+            .keys()
+            .filter(|x| *x != d)
+            .map(|x| cap.name(*x).to_string())
+            .collect();
+        out.push(ForensicFinding {
+            behavior: Behavior::RogueDhcp,
+            level: Level::High,
+            source: cap.name(*d).to_string(),
+            detail: format!(
+                "{} (machine d'utilisateur) a répondu en serveur DHCP à {} client(s){} — serveur DHCP pirate",
+                cap.name(*d),
+                clients.len(),
+                if several {
+                    format!(", en concurrence avec {}", others.join(", "))
+                } else {
+                    String::new()
+                }
+            ),
+            first: *first,
+            last: *last,
+        });
     }
 }
 

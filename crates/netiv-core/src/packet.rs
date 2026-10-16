@@ -114,8 +114,7 @@ impl fmt::Display for L4Proto {
     }
 }
 
-/// Datagramme UDP. Le contenu est du texte : la simulation n'a pas besoin
-/// d'octets.
+/// Datagramme UDP.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UdpDatagram {
     /// Port source.
@@ -123,7 +122,41 @@ pub struct UdpDatagram {
     /// Port destination.
     pub dst_port: u16,
     /// Contenu applicatif.
-    pub data: String,
+    pub payload: UdpPayload,
+}
+
+/// Contenu d'un datagramme UDP. La simulation n'a pas besoin d'octets : un
+/// protocole connu (DHCP, DNS) transporte un message structuré, le reste du
+/// texte.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UdpPayload {
+    /// Texte libre (`udp`, services génériques).
+    Text(String),
+    /// Message DHCP.
+    Dhcp(Box<crate::dhcp::DhcpMessage>),
+    /// Message DNS.
+    Dns(Box<crate::dns::DnsMessage>),
+}
+
+impl UdpPayload {
+    /// Contenu sous forme de texte (réponses de service, affichage).
+    pub fn text(&self) -> String {
+        match self {
+            UdpPayload::Text(t) => t.clone(),
+            UdpPayload::Dhcp(m) => m.to_string(),
+            UdpPayload::Dns(m) => m.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for UdpPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UdpPayload::Text(t) => f.write_str(t),
+            UdpPayload::Dhcp(m) => write!(f, "{m}"),
+            UdpPayload::Dns(m) => write!(f, "{m}"),
+        }
+    }
 }
 
 /// Drapeaux TCP utilisés par la simulation.
@@ -296,11 +329,18 @@ impl fmt::Display for Frame {
                 IpPayload::Icmp(msg) => {
                     write!(f, "ICMP {msg} {} → {} (ttl {})", p.src, p.dst, p.ttl)
                 }
-                IpPayload::Udp(u) => write!(
-                    f,
-                    "UDP {}:{} → {}:{} (ttl {})",
-                    p.src, u.src_port, p.dst, u.dst_port, p.ttl
-                ),
+                IpPayload::Udp(u) => match &u.payload {
+                    UdpPayload::Text(_) => write!(
+                        f,
+                        "UDP {}:{} → {}:{} (ttl {})",
+                        p.src, u.src_port, p.dst, u.dst_port, p.ttl
+                    ),
+                    app => write!(
+                        f,
+                        "{app} — UDP {}:{} → {}:{}",
+                        p.src, u.src_port, p.dst, u.dst_port
+                    ),
+                },
                 IpPayload::Tcp(t) => write!(
                     f,
                     "TCP [{}] {}:{} → {}:{} (ttl {})",

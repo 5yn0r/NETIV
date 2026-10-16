@@ -112,9 +112,13 @@ fn check_index(c: &RootCause) -> Option<usize> {
         CauseKind::InterfaceDown => 0,
         CauseKind::LinkDown | CauseKind::PacketLoss | CauseKind::HighLatency => 1,
         CauseKind::WrongVlan => 2,
-        CauseKind::WrongIp | CauseKind::WrongMask => 3,
+        CauseKind::WrongIp
+        | CauseKind::WrongMask
+        | CauseKind::DhcpServerDown
+        | CauseKind::DhcpRelayMissing
+        | CauseKind::DhcpPoolExhausted => 3,
         CauseKind::ArpMismatch => 4,
-        CauseKind::WrongGateway => 5,
+        CauseKind::WrongGateway | CauseKind::RogueDhcp => 5,
         CauseKind::MissingRoute
         | CauseKind::WrongRoute
         | CauseKind::RoutingLoop
@@ -126,7 +130,10 @@ fn check_index(c: &RootCause) -> Option<usize> {
             }
         }
         CauseKind::Filtered => 8,
-        CauseKind::ServiceDown => 9,
+        CauseKind::ServiceDown
+        | CauseKind::DnsWrongServer
+        | CauseKind::DnsServerDown
+        | CauseKind::DnsRecordWrong => 9,
         CauseKind::Unknown => return None,
     })
 }
@@ -160,8 +167,10 @@ pub fn diagnose(
             None => (Status::Healthy, None),
         }
     } else {
-        let c = env
-            .classify()
+        // Un poste sans adresse (ou configuré par un serveur pirate) : la
+        // cause est côté DHCP, avant tout le reste.
+        let c = crate::dhcpdns::dhcp_cause(sim, req.src)
+            .or_else(|| env.classify())
             .or_else(|| env.static_scan())
             .unwrap_or_else(|| {
                 RootCause::new(

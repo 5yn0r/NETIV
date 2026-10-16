@@ -35,6 +35,11 @@ impl SimTime {
         self.0.checked_add(rhs.0).map(SimTime)
     }
 
+    /// Addition plafonnée à la date maximale (jamais de débordement).
+    pub fn saturating_add(self, rhs: SimTime) -> SimTime {
+        SimTime(self.0.saturating_add(rhs.0))
+    }
+
     /// Durée écoulée depuis `earlier` (0 si `earlier` est postérieur).
     pub fn saturating_since(self, earlier: SimTime) -> SimTime {
         SimTime(self.0.saturating_sub(earlier.0))

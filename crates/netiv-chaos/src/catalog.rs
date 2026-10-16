@@ -39,7 +39,7 @@ pub fn catalog() -> &'static [Template] {
     &CATALOG
 }
 
-static CATALOG: [Template; 17] = [
+static CATALOG: [Template; 21] = [
     Template {
         id: "link-down",
         kind: CauseKind::LinkDown,
@@ -158,6 +158,34 @@ static CATALOG: [Template; 17] = [
         difficulty: Difficulty::Hard,
         summary: "un équipement refuse tout par défaut",
         build: acl_default_deny,
+    },
+    Template {
+        id: "dhcp-server-down",
+        kind: CauseKind::DhcpServerDown,
+        difficulty: Difficulty::Easy,
+        summary: "le serveur DHCP de la machine source est arrêté",
+        build: dhcp_server_down,
+    },
+    Template {
+        id: "dhcp-relay-missing",
+        kind: CauseKind::DhcpRelayMissing,
+        difficulty: Difficulty::Medium,
+        summary: "le routeur ne relaie plus les demandes DHCP vers le serveur",
+        build: dhcp_relay_missing,
+    },
+    Template {
+        id: "dhcp-no-pool",
+        kind: CauseKind::DhcpPoolExhausted,
+        difficulty: Difficulty::Medium,
+        summary: "le serveur DHCP n'a plus de plage pour le réseau du client",
+        build: dhcp_no_pool,
+    },
+    Template {
+        id: "rogue-dhcp",
+        kind: CauseKind::RogueDhcp,
+        difficulty: Difficulty::Hard,
+        summary: "une machine du réseau distribue de fausses adresses (serveur DHCP pirate)",
+        build: rogue_dhcp,
     },
 ];
 
@@ -494,4 +522,137 @@ fn dst_ip(sim: &Simulation, p: &PathInfo) -> Option<Ipv4Addr> {
 
 fn flow_service(p: &PathInfo, _sim: &Simulation) -> Option<(L4Proto, u16)> {
     p.service
+}
+
+// ---------------------------------------------------------------- DHCP
+
+/// Bail actuel de la machine source, avec l'interface concernée.
+fn src_binding(
+    sim: &Simulation,
+    p: &PathInfo,
+) -> Option<(DeviceId, netiv_core::IfaceId, netiv_core::dhcp::Binding)> {
+    let src = p.src?;
+    ip_node(sim, src)?
+        .dhcp_clients
+        .iter()
+        .find_map(|(i, st)| match st {
+            netiv_core::dhcp::ClientState::Bound(b) => Some((src, *i, b.clone())),
+            _ => None,
+        })
+}
+
+/// Serveur DHCP qui a attribué l'adresse de la source.
+fn src_server(sim: &Simulation, p: &PathInfo) -> Option<(DeviceId, netiv_core::dhcp::Binding)> {
+    let (_, _, b) = src_binding(sim, p)?;
+    let (srv, _) = owner_of(sim, b.server)?;
+    ip_node(sim, srv)?
+        .dhcp_server
+        .as_ref()
+        .filter(|s| s.enabled)?;
+    Some((srv, b))
+}
+
+fn src_domain(sim: &Simulation, p: &PathInfo) -> Vec<(DeviceId, netiv_core::IfaceId)> {
+    let Some((src, iface, _)) = src_binding(sim, p) else {
+        return Vec::new();
+    };
+    netiv_diagnostics::l2::l2_domain(
+        sim,
+        src,
+        iface,
+        netiv_diagnostics::l2::L2Options {
+            vlan_aware: true,
+            honor_state: true,
+        },
+    )
+    .into_iter()
+    .collect()
+}
+
+fn dhcp_server_down(sim: &Simulation, p: &PathInfo, _: &mut SimRng) -> Option<Fault> {
+    let (device, _) = src_server(sim, p)?;
+    Some(Fault::DhcpServerDown { device })
+}
+
+fn dhcp_relay_missing(sim: &Simulation, p: &PathInfo, _: &mut SimRng) -> Option<Fault> {
+    let (srv, _) = src_server(sim, p)?;
+    let domain = src_domain(sim, p);
+    // Utile seulement si le serveur n'est pas sur le réseau du client.
+    if domain.iter().any(|(d, _)| *d == srv) {
+        return None;
+    }
+    let (device, iface) = domain
+        .iter()
+        .copied()
+        .find(|(d, i)| ip_node(sim, *d).is_some_and(|n| n.dhcp_relay.contains_key(i)))?;
+    Some(Fault::DhcpRelay {
+        device,
+        iface,
+        server: None,
+    })
+}
+
+fn dhcp_no_pool(sim: &Simulation, p: &PathInfo, _: &mut SimRng) -> Option<Fault> {
+    let (srv, b) = src_server(sim, p)?;
+    let server = ip_node(sim, srv)?.dhcp_server.as_ref()?;
+    let pools: Vec<_> = server
+        .pools
+        .iter()
+        .filter(|x| !x.network.contains(b.ip.addr()))
+        .cloned()
+        .collect();
+    if pools.len() == server.pools.len() || pools.is_empty() {
+        return None;
+    }
+    Some(Fault::DhcpPools { device: srv, pools })
+}
+
+fn rogue_dhcp(sim: &Simulation, p: &PathInfo, rng: &mut SimRng) -> Option<Fault> {
+    let (src, _, b) = src_binding(sim, p)?;
+    let net = b.ip.trunc();
+    // Une machine d'utilisateur, à adresse fixe, sur le réseau du client.
+    let candidates: Vec<DeviceId> = src_domain(sim, p)
+        .iter()
+        .map(|(d, _)| *d)
+        .filter(|d| *d != src)
+        .filter(|d| {
+            sim.device(*d).is_some_and(|x| {
+                matches!(x.kind, netiv_core::DeviceKind::Host)
+                    && matches!(x.effective_role(), "user" | "guest" | "iot")
+                    && x.ifaces
+                        .iter()
+                        .any(|i| i.ip.is_some_and(|n| n.contains(b.ip.addr())))
+            }) && ip_node(sim, *d)
+                .is_some_and(|n| n.dhcp_server.is_none() && n.dhcp_ifaces.is_empty())
+        })
+        .collect();
+    let device = pick(rng, &candidates)?;
+    let bogus = unused_in(sim, net)?;
+    let top = u32::from(net.broadcast()).saturating_sub(1);
+    let pool = netiv_core::dhcp::DhcpPool {
+        network: net,
+        first: Ipv4Addr::from(top.saturating_sub(20)),
+        last: Ipv4Addr::from(top.saturating_sub(10)),
+        gateway: Some(bogus),
+        dns: None,
+        lease_s: netiv_core::dhcp::DEFAULT_LEASE_S,
+    };
+    let fault = Fault::DhcpPools {
+        device,
+        pools: vec![pool],
+    };
+    // Le pirate doit vraiment gagner la course des offres : on vérifie.
+    let mut work = sim.fresh_clone();
+    work.inject_fault(fault.clone(), false).ok()?;
+    crate::restart_client(&mut work, src).ok()?;
+    let rogue_ip = sim
+        .device(device)?
+        .ifaces
+        .iter()
+        .find_map(|i| i.ip.map(|n| n.addr()))?;
+    let wins = ip_node(&work, src)?
+        .dhcp_clients
+        .values()
+        .any(|st| matches!(st, netiv_core::dhcp::ClientState::Bound(x) if x.server == rogue_ip));
+    wins.then_some(fault)
 }

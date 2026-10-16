@@ -8,7 +8,9 @@ use netiv_core::packet::L4Proto;
 use netiv_core::route::StaticRoute;
 use netiv_core::switch::PortMode;
 use netiv_core::{DeviceId, Fault, IfaceId, Ipv4Net, LinkId, MacAddr, SimTime, Simulation};
-use netiv_topology::{RuleDefAcl, rule_from_def, rule_to_def};
+use netiv_topology::{
+    DhcpPoolDef, RuleDefAcl, pool_from_def, pool_to_def, rule_from_def, rule_to_def,
+};
 use serde::{Deserialize, Serialize};
 
 /// Une panne décrite par noms.
@@ -121,6 +123,50 @@ pub enum FaultSpec {
         device: String,
         /// `allow` ou `deny`.
         action: String,
+    },
+    /// Serveur DHCP arrêté.
+    DhcpServerDown {
+        /// Équipement qui héberge le serveur.
+        device: String,
+    },
+    /// Plages d'un serveur DHCP remplacées (réduites, absentes…) ; sur un
+    /// équipement sans serveur, en installe un (serveur pirate).
+    DhcpPools {
+        /// Équipement.
+        device: String,
+        /// Nouvelles plages (vide : plus de serveur).
+        pools: Vec<DhcpPoolDef>,
+    },
+    /// Relais DHCP modifié ou supprimé.
+    DhcpRelay {
+        /// `Routeur:interface`.
+        iface: String,
+        /// Serveur visé ; absent = plus de relais.
+        #[serde(default)]
+        server: Option<String>,
+    },
+    /// Serveur DNS d'un équipement modifié.
+    SetDns {
+        /// Équipement.
+        device: String,
+        /// Nouveau serveur ; absent = aucun.
+        #[serde(default)]
+        server: Option<String>,
+    },
+    /// Enregistrement DNS modifié ou supprimé.
+    DnsRecord {
+        /// Serveur DNS.
+        device: String,
+        /// Nom.
+        name: String,
+        /// Nouvelle adresse ; absente = nom supprimé.
+        #[serde(default)]
+        ip: Option<String>,
+    },
+    /// Serveur DNS arrêté.
+    DnsServerDown {
+        /// Équipement qui héberge le serveur.
+        device: String,
     },
     /// Plusieurs pannes à la fois.
     Multi(Vec<FaultSpec>),
@@ -274,6 +320,42 @@ impl FaultSpec {
                 device: device(sim, d)?,
                 action: action(a)?,
             },
+            FaultSpec::DhcpServerDown { device: d } => Fault::DhcpServerDown {
+                device: device(sim, d)?,
+            },
+            FaultSpec::DhcpPools { device: d, pools } => Fault::DhcpPools {
+                device: device(sim, d)?,
+                pools: pools.iter().map(pool_from_def).collect::<Result<_, _>>()?,
+            },
+            FaultSpec::DhcpRelay { iface, server } => {
+                let (device, iface) = endpoint(sim, iface)?;
+                Fault::DhcpRelay {
+                    device,
+                    iface,
+                    server: server.as_deref().map(self::ip).transpose()?,
+                }
+            }
+            FaultSpec::SetDns { device: d, server } => Fault::SetDns {
+                device: device(sim, d)?,
+                server: server.as_deref().map(self::ip).transpose()?,
+            },
+            FaultSpec::DnsRecord {
+                device: d,
+                name,
+                ip: a,
+            } => {
+                if !netiv_core::dns::is_valid_name(name) {
+                    return Err(format!("nom de domaine invalide : « {name} »"));
+                }
+                Fault::DnsRecord {
+                    device: device(sim, d)?,
+                    name: name.clone(),
+                    ip: a.as_deref().map(self::ip).transpose()?,
+                }
+            }
+            FaultSpec::DnsServerDown { device: d } => Fault::DnsServerDown {
+                device: device(sim, d)?,
+            },
             FaultSpec::Multi(list) => Fault::Multi(
                 list.iter()
                     .map(|f| f.resolve(sim))
@@ -369,6 +451,29 @@ impl FaultSpec {
                 device: dn(device),
                 action: action.to_string(),
             },
+            Fault::DhcpServerDown { device } => FaultSpec::DhcpServerDown { device: dn(device) },
+            Fault::DhcpPools { device, pools } => FaultSpec::DhcpPools {
+                device: dn(device),
+                pools: pools.iter().map(pool_to_def).collect(),
+            },
+            Fault::DhcpRelay {
+                device,
+                iface,
+                server,
+            } => FaultSpec::DhcpRelay {
+                iface: ep(device, iface),
+                server: server.map(|s| s.to_string()),
+            },
+            Fault::SetDns { device, server } => FaultSpec::SetDns {
+                device: dn(device),
+                server: server.map(|s| s.to_string()),
+            },
+            Fault::DnsRecord { device, name, ip } => FaultSpec::DnsRecord {
+                device: dn(device),
+                name: name.clone(),
+                ip: ip.map(|a| a.to_string()),
+            },
+            Fault::DnsServerDown { device } => FaultSpec::DnsServerDown { device: dn(device) },
             Fault::Multi(list) => {
                 FaultSpec::Multi(list.iter().map(|f| FaultSpec::from_fault(sim, f)).collect())
             }

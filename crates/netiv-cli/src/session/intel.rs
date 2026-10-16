@@ -87,7 +87,10 @@ impl Session {
         args: &[&str],
         out: &mut dyn Write,
     ) -> Result<(), CliError> {
-        let usage = "usage : topology generate --type <type> --routers N --hosts M [--seed S] [--save fichier.yaml]";
+        let usage = "usage : topology generate --type <type> --routers N --hosts M [--seed S] [--save fichier.yaml] | topology autoconfig";
+        if args == ["autoconfig"] {
+            return self.cmd_autoconfig(out);
+        }
         let ["generate", rest @ ..] = args else {
             return err(usage);
         };

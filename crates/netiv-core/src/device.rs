@@ -185,6 +185,26 @@ pub enum Command {
         /// Contenu.
         data: String,
     },
+    /// Demande (ou redemande) une adresse par DHCP.
+    DhcpRenew {
+        /// Interface ; `None` : toutes les interfaces DHCP.
+        iface: Option<IfaceId>,
+        /// `true` : oublie d'abord l'adresse actuelle (démarrage à froid).
+        fresh: bool,
+    },
+    /// Rend l'adresse obtenue par DHCP.
+    DhcpRelease {
+        /// Interface ; `None` : toutes les interfaces DHCP.
+        iface: Option<IfaceId>,
+    },
+    /// Résout un nom par DNS, puis lance éventuellement une commande vers
+    /// l'adresse trouvée.
+    Resolve {
+        /// Nom à résoudre.
+        name: String,
+        /// Suite à donner.
+        then: crate::dns::AfterResolve,
+    },
 }
 
 /// Ce qu'un équipement demande au moteur de faire.
@@ -210,6 +230,13 @@ pub enum Effect {
         trace_id: Option<TraceId>,
         /// Contenu.
         kind: TraceKind,
+    },
+    /// Changer l'adresse d'une de ses interfaces (client DHCP).
+    ConfigureIface {
+        /// Interface.
+        iface: IfaceId,
+        /// Nouvelle adresse (`None` : aucune).
+        ip: Option<crate::addr::Ipv4Net>,
     },
 }
 
@@ -254,6 +281,11 @@ impl Effects {
     /// Consigne un événement de trace.
     pub fn trace(&mut self, trace_id: Option<TraceId>, kind: TraceKind) {
         self.list.push(Effect::Trace { trace_id, kind });
+    }
+
+    /// Demande le changement d'adresse d'une interface.
+    pub fn configure_iface(&mut self, iface: IfaceId, ip: Option<crate::addr::Ipv4Net>) {
+        self.list.push(Effect::ConfigureIface { iface, ip });
     }
 
     /// Consomme la liste.

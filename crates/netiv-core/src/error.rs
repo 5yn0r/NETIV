@@ -131,6 +131,10 @@ pub enum NetivError {
     #[error("la panne n°{0} est déjà réparée")]
     FaultAlreadyRepaired(u64),
 
+    /// Configuration impossible (message complet).
+    #[error("{0}")]
+    InvalidConfig(String),
+
     /// Rôle d'équipement inconnu.
     #[error("rôle inconnu : « {0} » (rôles : user, server, dmz, internet, network, guest, iot)")]
     UnknownRole(String),

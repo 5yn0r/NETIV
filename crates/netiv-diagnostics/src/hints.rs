@@ -76,6 +76,34 @@ pub fn hints_for(cause: &RootCause) -> [String; LEVELS] {
             "Le paquet arrive à un équipement de filtrage puis disparaît sans réponse. Qui décide de le laisser passer ?".to_string(),
             format!("Lis les règles de {d} avec « show acl {d} » et la décision citée dans la trace."),
         ),
+        CauseKind::DhcpServerDown => (
+            "La machine n'a pas d'adresse IP. Qui est censé lui en donner une, et ce service répond-il ?".to_string(),
+            format!("Regarde le serveur DHCP avec « show dhcp {d} » : tourne-t-il ? Ensuite, le client doit redemander une adresse (« dhcp <poste> renew »)."),
+        ),
+        CauseKind::DhcpRelayMissing => (
+            "La demande DHCP du client est une diffusion : un routeur ne la transmet jamais tel quel. Où est le serveur par rapport au client ?".to_string(),
+            format!("Le serveur est dans un autre réseau : l'interface de {d} côté client doit relayer les demandes (« show dhcp {d} »)."),
+        ),
+        CauseKind::DhcpPoolExhausted => (
+            "Le serveur DHCP répond-il au client, ou n'a-t-il rien à lui proposer ?".to_string(),
+            format!("Compare la taille de la plage de {d} et le nombre de baux déjà attribués (« show dhcp {d} »)."),
+        ),
+        CauseKind::RogueDhcp => (
+            "Le client a bien une adresse, mais d'où vient sa configuration (passerelle, DNS) ?".to_string(),
+            format!("Regarde quel serveur a répondu au client (« show dhcp <poste> ») : {d} est-il censé distribuer des adresses ?"),
+        ),
+        CauseKind::DnsWrongServer => (
+            "Le réseau fonctionne avec les adresses IP, pas avec les noms. Qui la machine interroge-t-elle pour traduire un nom ?".to_string(),
+            format!("Regarde le serveur DNS utilisé par {d} (« show dns {d} ») : une machine répond-elle aux questions DNS à cette adresse ?"),
+        ),
+        CauseKind::DnsServerDown => (
+            "La question DNS part bien, mais quelle réponse revient ?".to_string(),
+            format!("Le serveur DNS {d} est-il démarré (« show dns {d} ») ?"),
+        ),
+        CauseKind::DnsRecordWrong => (
+            "Le serveur DNS répond : la réponse est-elle la bonne ?".to_string(),
+            format!("Compare l'enregistrement du nom dans la zone de {d} (« show dns {d} ») avec l'adresse réelle du serveur visé."),
+        ),
         CauseKind::Unknown => (
             "Reprends la trace pas à pas avec « trace » et note où le paquet disparaît.".to_string(),
             "Compare les tables (ARP, routes, ACL) des équipements autour de cet endroit.".to_string(),

@@ -164,7 +164,7 @@ mod tests {
     fn the_shipped_path_is_well_formed() {
         let p = &paths()[0];
         assert_eq!(p.id, "fundamentals");
-        assert_eq!(p.lessons.len(), 10);
+        assert_eq!(p.lessons.len(), 11);
         let ids: std::collections::BTreeSet<_> = p.lessons.iter().map(|l| &l.id).collect();
         assert_eq!(ids.len(), p.lessons.len(), "identifiants uniques");
         for l in &p.lessons {
@@ -226,7 +226,7 @@ mod tests {
         );
         assert!(text.contains("[✓]  1. Ethernet et adresses MAC"), "{text}");
         assert!(text.contains("[ ]  2. ARP"), "{text}");
-        assert!(text.contains("Progression : 1/10"), "{text}");
+        assert!(text.contains("Progression : 1/11"), "{text}");
         assert!(text.contains("learn read 2"), "{text}");
     }
 
@@ -235,7 +235,7 @@ mod tests {
         let p = &paths()[0];
         let (n, l) = p.lesson("arp").unwrap();
         let text = p.render_lesson(n, l);
-        assert!(text.contains("LEÇON 2/10"));
+        assert!(text.contains("LEÇON 2/11"));
         assert!(text.contains("netiv> show arp PC1"));
         let (n, l) = p.lesson("ipv4").unwrap();
         assert!(p.render_lesson(n, l).contains("beginner-04"));

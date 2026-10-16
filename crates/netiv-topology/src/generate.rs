@@ -129,6 +129,7 @@ fn iface(name: &str, ip: String) -> InterfaceDef {
         vlan: None,
         trunk: None,
         native_vlan: None,
+        dhcp_relay: None,
     }
 }
 
@@ -144,6 +145,10 @@ fn device(name: &str, kind: &str, role: Option<&str>) -> DeviceDef {
         services: Vec::new(),
         arp: Vec::new(),
         acl: None,
+        dhcp: None,
+        dns: None,
+        dns_server: None,
+        pos: None,
     }
 }
 

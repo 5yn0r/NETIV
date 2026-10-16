@@ -285,7 +285,7 @@ mod tests {
             payload: IpPayload::Udp(UdpDatagram {
                 src_port: 5000,
                 dst_port: dp,
-                data: String::new(),
+                payload: crate::packet::UdpPayload::Text(String::new()),
             }),
         }
     }

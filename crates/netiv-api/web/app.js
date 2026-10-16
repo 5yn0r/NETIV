@@ -74,6 +74,21 @@
     histPos: 0,
     deadline: null,    // horodatage de fin du temps conseillé
     busy: false,
+    // Mode Construire (éditeur de réseau).
+    build: {
+      on: false,
+      def: null,       // topologie appliquée (TopologyDef)
+      draft: null,     // brouillon invalide, non appliqué
+      past: [],        // historique pour « annuler »
+      future: [],      // pour « rétablir »
+      tool: 'select',  // 'select' | 'cable'
+      cableFrom: null, // premier équipement choisi avec l'outil Câble
+      sel: null,       // {kind:'device', name} | {kind:'link', a, b}
+      errors: [],
+      warnings: [],
+      issueDevices: { err: new Set(), warn: new Set() },
+      saving: false,
+    },
   };
 
   // ------------------------------------------------------------------ API
@@ -92,7 +107,11 @@
     }
     let data = null;
     try { data = await res.json(); } catch (_) { /* corps vide */ }
-    if (!res.ok) throw new Error((data && data.error) || `Erreur HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `Erreur HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
     return data;
   }
 
@@ -205,11 +224,24 @@
       state.deadline = null;
     }
     renderLabs();
+    if (state.build.on && snap.editable === false) exitBuild();
+    updateBuildToggle();
     renderStage();
+  }
+
+  /** Bouton « Construire » : indisponible sans lab ou pendant un défi. */
+  function updateBuildToggle() {
+    const t = $('#build-toggle');
+    const on = state.build.on;
+    const locked = state.snap && state.snap.editable === false;
+    t.setAttribute('aria-pressed', String(on));
+    t.disabled = !state.snap || (!on && locked);
+    t.title = locked && !on ? (state.snap.edit_lock || '') : 'Construire ou modifier ce réseau  B';
   }
 
   async function createLab(body) {
     const r = await api('POST', '/api/labs', body);
+    exitBuild();
     state.labs.push({ id: r.id, name: r.snapshot.name || r.id });
     state.current = r.id;
     resetViews();
@@ -236,6 +268,7 @@
   async function switchLab(id) {
     if (state.current === id) return;
     await guarded(async () => {
+      exitBuild();
       state.current = id;
       resetViews();
       applySnapshot(await api('GET', `/api/labs/${id}`));
@@ -249,6 +282,7 @@
       await api('DELETE', `/api/labs/${id}`);
       state.labs = state.labs.filter((l) => l.id !== id);
       if (state.current === id) {
+        exitBuild();
         state.current = null;
         state.snap = null;
         resetViews();
@@ -294,6 +328,9 @@
     const done = new Map((state.profile ? state.profile.completed_ids : []).map((c) => [c.id, c.score]));
 
     if (state.libTab === 'networks') {
+      root.append(h('div', { class: 'btn-row create-row' },
+        libButton('＋ Nouveau réseau', newEmptyNetwork, 'primary'),
+        h('button', { type: 'button', title: 'Ouvrir un fichier .netiv, .yaml ou .json', onclick: () => $('#file-import').click() }, 'Importer un fichier')));
       for (const name of lib.topologies) {
         root.append(h('div', { class: 'item' },
           h('div', { class: 'name' }, name),
@@ -483,19 +520,66 @@
   const VIEW_W = 1000;
   const VIEW_H = 560;
 
-  function ensurePositions(snap) {
-    const key = `netiv.pos.${snap.name}.${snap.devices.length}`;
-    let saved = store(key);
-    const names = snap.devices.map((d) => d.name);
-    if (!saved || names.some((n) => !saved[n])) {
-      const fitted = fitToView(layout(snap.devices, snap.links), VIEW_W, VIEW_H, 70);
-      saved = {};
-      for (const [n, p] of fitted) saved[n] = { x: Math.round(p.x), y: Math.round(p.y) };
+  /** Coordonnées arrondies, au format du serveur (`[x, y]`). */
+  const asPair = (p) => [Math.round(p.x), Math.round(p.y)];
+
+  /**
+   * Positions des équipements. Priorité : celles du serveur (enregistrées
+   * dans le lab), puis celles mémorisées par le navigateur, puis la
+   * disposition automatique, calculée seulement pour les équipements qui
+   * n'en ont pas : ajouter un équipement ne déplace pas les autres.
+   */
+  function syncPositions(snap) {
+    const key = `netiv.pos.${snap.name}`;
+    if (state.posKey !== key) {
+      const saved = store(key) || {};
+      state.positions = new Map(Object.entries(saved).filter(([, p]) => p && Number.isFinite(p.x)));
+      state.posKey = key;
+      const v = store(`netiv.view.${key}`);
+      state.view = v && v.w > 0 ? v : defaultView();
     }
-    state.positions = new Map(Object.entries(saved));
-    state.posKey = key;
-    const v = store(`netiv.view.${key}`);
-    state.view = v && v.w > 0 ? v : defaultView();
+    const names = new Set(snap.devices.map((d) => d.name));
+    for (const n of Array.from(state.positions.keys())) if (!names.has(n)) state.positions.delete(n);
+    const missing = [];
+    for (const d of snap.devices) {
+      if (Array.isArray(d.pos)) state.positions.set(d.name, { x: d.pos[0], y: d.pos[1] });
+      else if (!state.positions.has(d.name)) missing.push(d.name);
+    }
+    if (missing.length) {
+      const auto = fitToView(layout(snap.devices, snap.links), VIEW_W, VIEW_H, 70);
+      for (const n of missing) {
+        const p = auto.get(n) || { x: VIEW_W / 2, y: VIEW_H / 2 };
+        state.positions.set(n, { x: Math.round(p.x), y: Math.round(p.y) });
+      }
+    }
+  }
+
+  /** Mémorise les positions dans le navigateur, et (en différé) dans le lab. */
+  let posTimer = null;
+  const posQueue = {};
+  function savePositions(names) {
+    const o = {};
+    for (const [n, p] of state.positions) o[n] = { x: Math.round(p.x), y: Math.round(p.y) };
+    if (state.posKey) store(state.posKey, o);
+    for (const n of names) {
+      const p = state.positions.get(n);
+      if (p) posQueue[n] = asPair(p);
+    }
+    if (state.build.on) {
+      for (const def of [state.build.def, state.build.draft]) {
+        if (!def) continue;
+        for (const d of def.devices) if (posQueue[d.name]) d.pos = posQueue[d.name];
+      }
+    }
+    clearTimeout(posTimer);
+    const lab = state.current;
+    posTimer = setTimeout(() => {
+      const positions = { ...posQueue };
+      for (const k of Object.keys(posQueue)) delete posQueue[k];
+      if (lab && Object.keys(positions).length) {
+        api('PUT', `/api/labs/${lab}/positions`, { positions }).catch(() => { /* le navigateur les garde */ });
+      }
+    }, 400);
   }
 
   // ------------------------------------------------------------------ zoom et déplacement du schéma
@@ -551,9 +635,11 @@
   function relayout() {
     const snap = state.snap;
     if (!snap) return;
-    try { localStorage.removeItem(state.posKey); localStorage.removeItem(`netiv.view.${state.posKey}`); } catch (_) { /* sans stockage */ }
-    state.positions = new Map();
-    state.posKey = null;
+    const auto = fitToView(layout(snap.devices, snap.links), VIEW_W, VIEW_H, 70);
+    state.positions = new Map(Array.from(auto, ([n, p]) => [n, { x: Math.round(p.x), y: Math.round(p.y) }]));
+    // Les positions du lab doivent suivre, sinon elles reprendraient le dessus.
+    for (const d of snap.devices) d.pos = asPair(state.positions.get(d.name));
+    savePositions(snap.devices.map((d) => d.name));
     renderCanvas();
     fitView();
   }
@@ -570,15 +656,16 @@
     // Glisser le fond : déplacer la vue.
     let pan = null;
     svg.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target.closest('.node') || !state.snap) return;
+      if (e.button !== 0 || e.target.closest('.node, .link-hit') || !state.snap) return;
       const m = svg.getScreenCTM();
       if (!m) return;
-      pan = { sx: e.clientX, sy: e.clientY, view: { ...state.view }, scale: m.a };
+      pan = { sx: e.clientX, sy: e.clientY, view: { ...state.view }, scale: m.a, moved: false };
       svg.setPointerCapture(e.pointerId);
       svg.classList.add('panning');
     });
     svg.addEventListener('pointermove', (e) => {
       if (!pan) return;
+      if (Math.abs(e.clientX - pan.sx) + Math.abs(e.clientY - pan.sy) > 3) pan.moved = true;
       state.view = {
         ...pan.view,
         x: pan.view.x - (e.clientX - pan.sx) / pan.scale,
@@ -588,6 +675,11 @@
     });
     const endPan = () => {
       if (!pan) return;
+      // Un clic (sans déplacement) dans le vide désélectionne.
+      if (!pan.moved && state.build.on) {
+        state.build.cableFrom = null;
+        buildSelect(null);
+      }
       pan = null;
       svg.classList.remove('panning');
       saveView();
@@ -624,11 +716,18 @@
   function renderCanvas() {
     const svg = clear($('#canvas'));
     const snap = state.snap;
-    $('#canvas-empty').hidden = !!(snap && snap.devices.length);
-    if (!snap || !snap.devices.length) return;
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    if (!state.positions.size || state.posKey !== `netiv.pos.${snap.name}.${snap.devices.length}`) ensurePositions(snap);
+    const empty = !(snap && snap.devices.length);
+    $('#canvas-empty').hidden = !empty;
+    const emptyText = clear($('#canvas-empty-text'));
+    if (state.build.on) {
+      emptyText.append(h('strong', null, 'Réseau vide'), ' : clique sur un équipement de la palette, ou glisse-le ici.');
+    } else {
+      emptyText.append(h('strong', null, 'Choisis un lab'), ' dans le catalogue pour voir son schéma.');
+    }
+    if (snap) syncPositions(snap);
     applyView();
+    if (empty) return;
     const big = snap.devices.length > 40;
     const scale = snap.devices.length > 90 ? 0.55 : snap.devices.length > 40 ? 0.75 : 1;
 
@@ -644,15 +743,27 @@
       const line = s('line', { class: cls, x1: a.x, y1: a.y, x2: b.x, y2: b.y, 'data-a': l.a_device, 'data-b': l.b_device });
       const extra = [l.up ? null : 'coupé', l.loss > 0 ? `perte ${(l.loss * 100).toFixed(0)} %` : null, `latence ${(l.latency_us / 1000).toFixed(1)} ms`].filter(Boolean);
       line.append(s('title', null, `${l.a} ↔ ${l.b} — ${extra.join(', ')}`));
-      linkLayer.append(line);
+      if (state.build.on) {
+        const sel = state.build.sel;
+        if (sel && sel.kind === 'link' && sel.a === l.a && sel.b === l.b) line.classList.add('selected');
+        // Zone de clic plus large que le trait.
+        const hit = s('line', { class: 'link-hit', x1: a.x, y1: a.y, x2: b.x, y2: b.y, 'data-a': l.a_device, 'data-b': l.b_device });
+        hit.addEventListener('click', (e) => { e.stopPropagation(); buildSelect({ kind: 'link', a: l.a, b: l.b }); });
+        linkLayer.append(line, hit);
+      } else {
+        linkLayer.append(line);
+      }
     }
 
     for (const d of snap.devices) {
       const p = state.positions.get(d.name);
       if (!p) continue;
       const anyDown = d.ifaces.some((i) => !i.up || i.link_up === false);
+      const b = state.build;
+      const selected = b.on ? (b.sel && b.sel.kind === 'device' && b.sel.name === d.name) : state.device === d.name;
+      const issue = b.on ? (b.issueDevices.err.has(d.name) ? ' issue-err' : b.issueDevices.warn.has(d.name) ? ' issue-warn' : '') : '';
       const g = s('g', {
-        class: `node kind-${d.kind} role-${d.role}${state.device === d.name ? ' selected' : ''}${anyDown ? ' faulty' : ''}`,
+        class: `node kind-${d.kind} role-${d.role}${selected ? ' selected' : ''}${anyDown ? ' faulty' : ''}${issue}${b.on && b.cableFrom === d.name ? ' cable-from' : ''}`,
         transform: `translate(${p.x} ${p.y}) scale(${scale})`,
         'data-name': d.name, tabindex: 0, role: 'button', 'aria-label': `${d.name}, ${d.kind}${anyDown ? ', interface ou câble hors service' : ''}`,
       });
@@ -665,6 +776,8 @@
       g.append(s('text', { y: 42 }, d.name));
       const sub = subLabel(d, big);
       if (sub) g.append(s('text', { class: 'sub', y: 55 }, sub));
+      const roles = [d.dhcp_server ? 'DHCP' : null, d.dns_server ? 'DNS' : null].filter(Boolean);
+      if (roles.length) g.append(s('text', { class: 'svc-tag', y: -30 }, roles.join(' · ')));
       if (anyDown) g.append(s('circle', { class: 'badge', cx: 24, cy: -18, r: 6 }), s('text', { x: 24, y: -14.5, style: 'fill:#fff;font-size:10px;font-weight:700' }, '!'));
       g.append(s('title', null, `${d.name} (${d.kind}, rôle ${d.role})`));
       attachNode(g, d.name);
@@ -685,7 +798,7 @@
     state.positions.set(name, p);
     const t = g.getAttribute('transform') || '';
     g.setAttribute('transform', t.replace(/translate\([^)]*\)/, `translate(${p.x} ${p.y})`));
-    for (const l of $$('#canvas .link')) {
+    for (const l of $$('#canvas .link, #canvas .link-hit')) {
       if (l.dataset.a === name) { l.setAttribute('x1', p.x); l.setAttribute('y1', p.y); }
       if (l.dataset.b === name) { l.setAttribute('x2', p.x); l.setAttribute('y2', p.y); }
     }
@@ -710,9 +823,9 @@
     const end = () => {
       if (!drag) return;
       if (drag.moved) {
-        const o = {};
-        for (const [n, p] of state.positions) o[n] = { x: Math.round(p.x), y: Math.round(p.y) };
-        store(state.posKey, o);
+        savePositions([name]);
+      } else if (state.build.on) {
+        buildNodeClick(name);
       } else {
         selectDevice(name);
       }
@@ -720,7 +833,12 @@
     };
     g.addEventListener('pointerup', end);
     g.addEventListener('pointercancel', () => { drag = null; });
-    g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectDevice(name); } });
+    g.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (state.build.on) buildNodeClick(name); else selectDevice(name);
+      }
+    });
   }
 
   // ------------------------------------------------------------------ en-tête du schéma, barre d'outils
@@ -775,6 +893,864 @@
     if (name === 'device' && state.device) guarded(() => loadDevice(state.device));
   }
 
+  // ------------------------------------------------------------------ mode Construire (éditeur)
+  //
+  // L'éditeur travaille sur la description du réseau (TopologyDef, le format
+  // des fichiers YAML en JSON). Chaque modification envoie la description
+  // complète au serveur, qui la valide puis reconstruit le lab : une seule
+  // requête par modification, et la même validation que pour un fichier.
+
+  const KIND_PREFIX = { host: 'PC', server: 'SRV', router: 'R', firewall: 'FW', switch: 'SW' };
+  const KIND_LABEL = { host: 'Poste', server: 'Serveur', router: 'Routeur', firewall: 'Pare-feu', switch: 'Switch' };
+  const ROLES = ['user', 'server', 'dmz', 'internet', 'network', 'guest', 'iot'];
+  const HISTORY_MAX = 100;
+  const isIp = (kind) => kind !== 'switch';
+  const isRouter = (kind) => kind === 'router' || kind === 'firewall';
+
+  /** Copie profonde d'une topologie (données JSON pures). */
+  const cloneDef = (def) => JSON.parse(JSON.stringify(def));
+
+  /** La topologie affichée dans l'inspecteur : le brouillon s'il existe. */
+  const curDef = () => state.build.draft || state.build.def;
+
+  function devOf(def, name) {
+    return def.devices.find((d) => d.name === name);
+  }
+
+  /** Interfaces d'un équipement, ports implicites (`ports: N`) compris. */
+  function ifaceNames(d) {
+    const names = [];
+    if (d.type === 'switch' && d.ports) for (let i = 1; i <= d.ports; i++) names.push(`port${i}`);
+    for (const i of d.interfaces || []) names.push(i.name);
+    return names;
+  }
+
+  /** Interfaces déjà câblées, sous la forme « Équipement:interface ». */
+  function usedEndpoints(def) {
+    const used = new Set();
+    for (const l of def.links) { used.add(l.a); used.add(l.b); }
+    return used;
+  }
+
+  function nextName(def, prefix) {
+    const taken = new Set(def.devices.map((d) => d.name));
+    for (let i = 1; ; i++) if (!taken.has(`${prefix}${i}`)) return `${prefix}${i}`;
+  }
+
+  function nextIfaceName(d, prefix) {
+    const taken = new Set(ifaceNames(d));
+    for (let i = d.type === 'switch' ? 1 : 0; ; i++) if (!taken.has(`${prefix}${i}`)) return `${prefix}${i}`;
+  }
+
+  /** Nouvel équipement prêt à câbler. */
+  function newDevice(def, kind, pos) {
+    const d = { name: nextName(def, KIND_PREFIX[kind] || 'X'), type: kind, interfaces: [], pos: asPair(pos) };
+    const count = { host: 1, server: 1, router: 2, firewall: 3, switch: 8 }[kind] || 1;
+    for (let i = 0; i < count; i++) {
+      d.interfaces.push({ name: kind === 'switch' ? `port${i + 1}` : `eth${i}` });
+    }
+    return d;
+  }
+
+  /** Première interface libre de `d` ; en ajoute une si toutes sont prises. */
+  function freeIface(def, d) {
+    const used = usedEndpoints(def);
+    const free = ifaceNames(d).find((n) => !used.has(`${d.name}:${n}`));
+    if (free) return free;
+    const name = nextIfaceName(d, d.type === 'switch' ? 'port' : 'eth');
+    d.interfaces = d.interfaces || [];
+    d.interfaces.push({ name });
+    return name;
+  }
+
+  // ---- entrer / sortir
+
+  async function enterBuild() {
+    if (!state.current || !state.snap) throw new Error("Ouvre d'abord un lab (ou crée un réseau vide dans le catalogue).");
+    if (state.snap.editable === false) throw new Error(state.snap.edit_lock || 'Ce lab ne peut pas être modifié.');
+    const r = await api('GET', `/api/labs/${state.current}/topology`);
+    const b = state.build;
+    Object.assign(b, {
+      on: true, def: r.topology, draft: null, past: [], future: [], tool: 'select',
+      cableFrom: null, sel: null, errors: [], warnings: [],
+    });
+    // Les équipements sans position prennent celle affichée, pour que la
+    // disposition soit enregistrée avec le lab.
+    const missing = [];
+    for (const d of b.def.devices) {
+      if (!d.pos && state.positions.has(d.name)) { d.pos = asPair(state.positions.get(d.name)); missing.push(d.name); }
+    }
+    if (missing.length) savePositions(missing);
+    await validateCurrent();
+    renderBuild();
+    selectTab('device');
+  }
+
+  function exitBuild() {
+    const b = state.build;
+    if (!b.on) return;
+    b.on = false;
+    b.draft = null;
+    b.sel = null;
+    b.cableFrom = null;
+    renderBuild();
+    renderDevice(null);
+    if (state.device && state.snap && state.snap.devices.some((d) => d.name === state.device)) guarded(() => loadDevice(state.device));
+  }
+
+  async function toggleBuild() {
+    if (state.build.on) exitBuild(); else await enterBuild();
+  }
+
+  // ---- appliquer une modification
+
+  /** Messages d'erreur renvoyés par le serveur (« topologie invalide :\n- … »). */
+  function parseErrors(message) {
+    const parts = String(message).split('\n- ');
+    return parts.length > 1 ? parts.slice(1) : [String(message)];
+  }
+
+  /** Équipements cités par un message (mot entier). */
+  function devicesIn(messages, def) {
+    const found = new Set();
+    const names = (def ? def.devices : []).map((d) => d.name).sort((a, b) => b.length - a.length);
+    for (const m of messages) {
+      for (const n of names) {
+        const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (new RegExp(`(^|[^\\w-])${esc}([^\\w-]|$)`).test(m)) found.add(n);
+      }
+    }
+    return found;
+  }
+
+  function setIssues(errors, warnings) {
+    const b = state.build;
+    b.errors = errors;
+    b.warnings = warnings;
+    const def = curDef();
+    b.issueDevices = { err: devicesIn(errors, def), warn: devicesIn(warnings, def) };
+  }
+
+  async function validateCurrent() {
+    const r = await api('POST', `/api/labs/${state.current}/topology/validate`, { topology: curDef() });
+    setIssues(r.errors, r.warnings);
+  }
+
+  /**
+   * Applique une topologie. Valide : le lab est reconstruit et l'ancienne
+   * version part dans l'historique. Invalide : elle reste en brouillon, le
+   * lab garde sa dernière version valide.
+   */
+  async function applyDef(next, { record = true } = {}) {
+    const b = state.build;
+    const lab = state.current;
+    try {
+      const r = await api('PUT', `/api/labs/${lab}/topology`, { topology: next });
+      if (record && b.def) {
+        b.past.push(b.def);
+        if (b.past.length > HISTORY_MAX) b.past.shift();
+        b.future = [];
+      }
+      b.def = next;
+      b.draft = null;
+      setIssues([], r.warnings || []);
+      // La trace repart de zéro : les parcours affichés ne valent plus.
+      state.journey = null;
+      state.tx = [];
+      state.step = -1;
+      applySnapshot(r.snapshot);
+      renderJourney();
+    } catch (e) {
+      if (e.status === 409) { exitBuild(); throw e; }
+      if (e.status !== 400) throw e;
+      b.draft = next;
+      setIssues(parseErrors(e.message), []);
+      renderCanvas();
+    }
+    renderBuild();
+  }
+
+  /** Modifie une copie de la topologie courante puis l'applique. */
+  async function commit(mutate) {
+    const next = cloneDef(curDef());
+    if (mutate(next) === false) return;
+    await applyDef(next);
+  }
+
+  /** Les modifications passent l'une après l'autre (pas de requêtes croisées). */
+  let commitChain = Promise.resolve();
+  function edit(mutate) {
+    commitChain = commitChain
+      .then(() => commit(mutate))
+      .catch((e) => { banner(e.message); consoleLine(e.message, 'err'); });
+    return commitChain;
+  }
+
+  async function undo() {
+    const b = state.build;
+    if (b.draft) { b.draft = null; await validateCurrent(); renderCanvas(); renderBuild(); return; }
+    if (!b.past.length) return;
+    const prev = b.past.pop();
+    b.future.push(b.def);
+    await applyDef(prev, { record: false });
+  }
+
+  async function redo() {
+    const b = state.build;
+    if (!b.future.length) return;
+    const next = b.future.pop();
+    b.past.push(b.def);
+    await applyDef(next, { record: false });
+  }
+
+  // ---- actions
+
+  /**
+   * Ajoute un équipement à `pos` (coordonnées du schéma) ; sans `pos`, à un
+   * emplacement libre, calculé quand la modification s'exécute (après les
+   * précédentes) pour que des clics rapides ne superposent pas les équipements.
+   */
+  function addDevice(kind, pos) {
+    let name = null;
+    return edit((def) => {
+      const d = newDevice(def, kind, pos || dropPoint());
+      name = d.name;
+      def.devices.push(d);
+    }).then(() => { if (name && devOf(curDef(), name)) buildSelect({ kind: 'device', name }); });
+  }
+
+  /**
+   * Emplacement libre près du centre de la vue (ajout par clic) : on parcourt
+   * une grille en spirale et on prend la première case assez loin de tous
+   * les équipements existants.
+   */
+  function dropPoint() {
+    const v = state.view;
+    const cx = v.x + v.w / 2, cy = v.y + v.h / 2;
+    const STEP = 110, MIN = 95;
+    const taken = Array.from(state.positions.values());
+    const free = (p) => taken.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= MIN);
+    for (let ring = 0; ring < 12; ring++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        for (let dy = -ring; dy <= ring; dy++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+          const p = { x: cx + dx * STEP, y: cy + dy * STEP * 0.8 };
+          if (free(p)) return p;
+        }
+      }
+    }
+    return { x: cx, y: cy };
+  }
+
+  function connect(a, b) {
+    if (a === b) return Promise.resolve();
+    return edit((def) => {
+      const da = devOf(def, a), db = devOf(def, b);
+      if (!da || !db) return false;
+      const ia = freeIface(def, da);
+      const ib = freeIface(def, db);
+      def.links.push({ a: `${a}:${ia}`, b: `${b}:${ib}` });
+      return true;
+    });
+  }
+
+  function deleteSelection() {
+    const sel = state.build.sel;
+    if (!sel) return Promise.resolve();
+    state.build.sel = null;
+    return edit((def) => {
+      if (sel.kind === 'device') {
+        def.devices = def.devices.filter((d) => d.name !== sel.name);
+        def.links = def.links.filter((l) => !l.a.startsWith(`${sel.name}:`) && !l.b.startsWith(`${sel.name}:`));
+      } else {
+        const i = def.links.findIndex((l) => l.a === sel.a && l.b === sel.b);
+        if (i < 0) return false;
+        def.links.splice(i, 1);
+      }
+      return true;
+    });
+  }
+
+  function buildSelect(sel) {
+    state.build.sel = sel;
+    renderCanvas();
+    renderInspector();
+  }
+
+  function buildNodeClick(name) {
+    const b = state.build;
+    if (b.tool === 'cable') {
+      if (!b.cableFrom) { b.cableFrom = name; renderCanvas(); renderIssues(); return; }
+      const from = b.cableFrom;
+      b.cableFrom = null;
+      connect(from, name);
+      return;
+    }
+    buildSelect({ kind: 'device', name });
+  }
+
+  function setTool(tool) {
+    state.build.tool = tool;
+    state.build.cableFrom = null;
+    renderCanvas();
+    renderBuildBar();
+    renderIssues();
+  }
+
+  async function download(format) {
+    const r = await api('GET', `/api/labs/${requireLab()}/topology?format=${format}`);
+    const blob = new Blob([r.text], { type: 'text/plain;charset=utf-8' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `${(state.snap && state.snap.name) || 'reseau'}.${format}` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function autoAddress() {
+    const r = await api('POST', `/api/labs/${requireLab()}/topology/autoconfig`, {});
+    if (!r.changes.length) {
+      banner("Rien à compléter : toutes les interfaces câblées ont déjà une adresse.", 'info');
+      return;
+    }
+    const b = state.build;
+    b.past.push(b.def);
+    b.future = [];
+    b.def = (await api('GET', `/api/labs/${state.current}/topology`)).topology;
+    b.draft = null;
+    applySnapshot(r.snapshot);
+    await validateCurrent();
+    consoleLine(`Adressage automatique (${r.changes.length} changement(s)) :\n  ${r.changes.join('\n  ')}`, 'note');
+    banner(`${r.changes.length} changement(s) — détail dans la console.`, 'info');
+    renderBuild();
+  }
+
+  async function newEmptyNetwork() {
+    const taken = new Set(state.labs.map((l) => l.name));
+    let name = 'nouveau-reseau';
+    for (let i = 2; taken.has(name); i++) name = `nouveau-reseau-${i}`;
+    await createLab({ empty: name });
+    await enterBuild();
+  }
+
+  async function importFile(file) {
+    if (file.size > 1024 * 1024) throw new Error('Fichier trop gros (1 Mio au plus).');
+    const text = await file.text();
+    await createLab({ yaml: text });
+  }
+
+  // ---- rendu
+
+  function renderBuild() {
+    const on = state.build.on;
+    $('#buildbar').hidden = !on;
+    document.body.classList.toggle('building', on);
+    updateBuildToggle();
+    renderBuildBar();
+    renderIssues();
+    renderCanvas();
+    renderInspector();
+  }
+
+  function renderBuildBar() {
+    const b = state.build;
+    if (!b.on) return;
+    $('#bt-select').setAttribute('aria-pressed', String(b.tool === 'select'));
+    $('#bt-cable').setAttribute('aria-pressed', String(b.tool === 'cable'));
+    $('#bt-undo').disabled = !b.past.length && !b.draft;
+    $('#bt-redo').disabled = !b.future.length;
+    $('#bt-delete').disabled = !b.sel;
+    $('#canvas').classList.toggle('cabling', b.tool === 'cable');
+  }
+
+  function renderIssues() {
+    const b = state.build;
+    const box = clear($('#build-issues'));
+    const show = b.on && (b.draft || b.errors.length || b.warnings.length || b.tool === 'cable');
+    box.hidden = !show;
+    if (!show) return;
+    if (b.tool === 'cable') {
+      box.append(h('p', { class: 'hint' }, b.cableFrom
+        ? `Câble depuis ${b.cableFrom} : clique sur le second équipement (Échap pour annuler).`
+        : 'Outil Câble : clique sur un équipement, puis sur un autre. Une interface libre est choisie de chaque côté.'));
+    }
+    if (b.draft) {
+      box.append(h('div', { class: 'draft' },
+        h('span', null, 'Brouillon non appliqué : corrige les erreurs ci-dessous (le schéma montre la dernière version valide).'),
+        h('button', { type: 'button', onclick: () => guarded(undo) }, 'Abandonner le brouillon')));
+    }
+    const list = h('ul', { class: 'issue-list' });
+    for (const [cls, label, items] of [['err', 'Erreur', b.errors], ['warn', 'Attention', b.warnings]]) {
+      for (const m of items) {
+        const names = Array.from(devicesIn([m], curDef()));
+        list.append(h('li', { class: cls },
+          h('button', {
+            type: 'button', title: names.length ? `Sélectionner ${names[0]}` : '',
+            onclick: () => { if (names.length) buildSelect({ kind: 'device', name: names[0] }); },
+          }, h('strong', null, `${label} · `), m)));
+      }
+    }
+    if (list.childElementCount) box.append(list);
+  }
+
+  // ---- inspecteur
+
+  /** Champ dont la valeur est appliquée au changement (Entrée ou sortie du champ). */
+  function input(key, value, onCommit, attrs = {}) {
+    const el = h('input', { type: 'text', value: value === null || value === undefined ? '' : String(value), 'data-k': key, spellcheck: 'false', ...attrs });
+    el.addEventListener('change', () => onCommit(el.type === 'checkbox' ? el.checked : el.value.trim()));
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); });
+    return el;
+  }
+
+  function checkbox(key, checked, onCommit, label) {
+    const el = h('input', { type: 'checkbox', 'data-k': key });
+    el.checked = !!checked;
+    el.addEventListener('change', () => onCommit(el.checked));
+    return h('label', { class: 'inline' }, el, ` ${label}`);
+  }
+
+  function select(key, value, options, onCommit, attrs = {}) {
+    const el = h('select', { 'data-k': key, ...attrs }, options.map(([v, l]) => h('option', { value: v }, l)));
+    el.value = value;
+    el.addEventListener('change', () => onCommit(el.value));
+    return el;
+  }
+
+  const del = (label, onclick) => h('button', { type: 'button', class: 'icon del', 'aria-label': label, title: label, onclick }, '✕');
+
+  /** Modifie l'équipement `name` (copie) et applique. */
+  function editDevice(name, mutate) {
+    return edit((def) => {
+      const d = devOf(def, name);
+      if (!d) return false;
+      return mutate(d, def);
+    });
+  }
+
+  function renderInspector() {
+    if (!state.build.on) return;
+    const root = $('#tab-device');
+    // Conserver le champ actif à travers le nouveau rendu.
+    const active = document.activeElement && root.contains(document.activeElement) ? document.activeElement.getAttribute('data-k') : null;
+    clear(root);
+    const def = curDef();
+    if (!def) return;
+    const sel = state.build.sel;
+    if (sel && sel.kind === 'device' && devOf(def, sel.name)) renderDeviceForm(root, def, devOf(def, sel.name));
+    else if (sel && sel.kind === 'link') renderLinkForm(root, def, sel);
+    else renderNetworkForm(root, def);
+    if (active) {
+      const el = root.querySelector(`[data-k="${CSS.escape(active)}"]`);
+      if (el) el.focus();
+    }
+  }
+
+  function renderNetworkForm(root, def) {
+    root.append(
+      h('h3', null, 'Réseau'),
+      h('div', { class: 'form-grid' },
+        h('label', null, 'Nom'),
+        input('net-name', def.network.name, (v) => { if (v) edit((d) => { d.network.name = v; }); }),
+        h('label', null, 'Graine'),
+        input('net-seed', def.network.seed || 0, (v) => edit((d) => { d.network.seed = Math.max(0, parseInt(v, 10) || 0); }), { inputmode: 'numeric' })),
+      h('p', { class: 'muted' }, `${def.devices.length} équipement(s), ${def.links.length} câble(s).`),
+      h('h3', null, 'Pour commencer'),
+      h('ol', { class: 'tips' },
+        h('li', null, 'Ajoute des équipements : clic sur la palette, ou glisser-déposer sur le schéma.'),
+        h('li', null, 'Relie-les avec l’outil Câble (touche C) : un clic sur chaque extrémité.'),
+        h('li', null, '« Adresser automatiquement » donne les IP, passerelles et routes manquantes.'),
+        h('li', null, 'Clique un équipement ou un câble pour le configurer ; Suppr le supprime.'),
+        h('li', null, 'Teste avec la barre d’outils (ping) ; Ctrl+Z annule.')),
+    );
+  }
+
+  function renderDeviceForm(root, def, d) {
+    const name = d.name;
+    const used = usedEndpoints(def);
+    root.append(h('div', { class: 'insp-head' },
+      h('h3', null, `${KIND_LABEL[d.type] || d.type} ${name}`),
+      h('button', { type: 'button', class: 'danger', onclick: () => guarded(deleteSelection) }, 'Supprimer')));
+
+    const general = h('div', { class: 'form-grid' },
+      h('label', null, 'Nom'),
+      input('dev-name', name, (v) => {
+        if (!v || v === name) return;
+        if (!/^[\w.-]+$/.test(v)) { banner('Nom invalide : lettres, chiffres, « - », « _ » et « . » seulement.'); renderInspector(); return; }
+        if (devOf(curDef(), v)) { banner(`« ${v} » existe déjà.`); renderInspector(); return; }
+        state.build.sel = { kind: 'device', name: v };
+        const p = state.positions.get(name);
+        if (p) { state.positions.delete(name); state.positions.set(v, p); }
+        editDevice(name, (x, df) => {
+          x.name = v;
+          const ren = (ep) => (ep.startsWith(`${name}:`) ? `${v}:${ep.slice(name.length + 1)}` : ep);
+          for (const l of df.links) { l.a = ren(l.a); l.b = ren(l.b); }
+        });
+      }),
+      h('label', null, 'Rôle'),
+      select('dev-role', d.role || '', [['', 'automatique'], ...ROLES.map((r) => [r, r])], (v) => editDevice(name, (x) => { if (v) x.role = v; else delete x.role; })),
+    );
+    if (isIp(d.type)) {
+      general.append(
+        h('label', null, 'Passerelle'),
+        input('dev-gw', d.gateway || '', (v) => editDevice(name, (x) => { if (v) x.gateway = v; else delete x.gateway; }), { placeholder: 'aucune (ou reçue par DHCP)', class: 'mono' }),
+        h('label', null, 'Serveur DNS'),
+        input('dev-dns', d.dns || '', (v) => editDevice(name, (x) => { if (v) x.dns = v; else delete x.dns; }), { placeholder: 'aucun (ou reçu par DHCP)', class: 'mono' }));
+    }
+    root.append(general);
+
+    // Interfaces.
+    const ifs = d.interfaces || [];
+    const table = h('table', { class: 'grid' });
+    const head = d.type === 'switch' ? ['Port', 'Mode', 'VLAN', ''] : ['Interface', 'Adresse IP', 'DHCP', 'Admin', ''];
+    table.append(h('thead', null, h('tr', null, head.map((t) => h('th', null, t)))));
+    const body = h('tbody');
+    ifs.forEach((i, k) => {
+      const cabled = used.has(`${name}:${i.name}`);
+      const nameCell = h('td', null, input(`if-${k}-name`, i.name, (v) => {
+        if (!v || v === i.name) return;
+        editDevice(name, (x, df) => {
+          if ((x.interfaces || []).some((o) => o.name === v)) return false;
+          const old = `${name}:${x.interfaces[k].name}`;
+          x.interfaces[k].name = v;
+          for (const l of df.links) { if (l.a === old) l.a = `${name}:${v}`; if (l.b === old) l.b = `${name}:${v}`; }
+          return true;
+        });
+      }, { class: `mono${cabled ? ' cabled' : ''}`, title: cabled ? 'câblée' : 'libre' }));
+      const remove = h('td', null, del(`Supprimer ${i.name}`, () => editDevice(name, (x, df) => {
+        const ep = `${name}:${x.interfaces[k].name}`;
+        x.interfaces.splice(k, 1);
+        df.links = df.links.filter((l) => l.a !== ep && l.b !== ep);
+      })));
+      if (d.type === 'switch') {
+        const trunk = Array.isArray(i.trunk);
+        const mode = select(`if-${k}-mode`, trunk ? 'trunk' : 'access', [['access', 'accès'], ['trunk', 'trunk']], (v) => editDevice(name, (x) => {
+          const it = x.interfaces[k];
+          if (v === 'trunk') { it.trunk = []; delete it.vlan; } else { delete it.trunk; delete it.native_vlan; }
+        }));
+        const vlanCell = trunk
+          ? h('td', { class: 'pair' },
+            input(`if-${k}-allowed`, i.trunk.join(','), (v) => editDevice(name, (x) => {
+              x.interfaces[k].trunk = v ? v.split(/[\s,]+/).filter(Boolean).map(Number).filter((n) => n > 0) : [];
+            }), { placeholder: 'tous', title: 'VLAN transportés (ex. 10,20 ; vide = tous)', class: 'mono' }),
+            input(`if-${k}-native`, i.native_vlan || '', (v) => editDevice(name, (x) => {
+              if (v) x.interfaces[k].native_vlan = Number(v); else delete x.interfaces[k].native_vlan;
+            }), { placeholder: 'natif 1', title: 'VLAN natif', class: 'mono narrow' }))
+          : h('td', null, input(`if-${k}-vlan`, i.vlan || '', (v) => editDevice(name, (x) => {
+            if (v) x.interfaces[k].vlan = Number(v); else delete x.interfaces[k].vlan;
+          }), { placeholder: '1', class: 'mono narrow' }));
+        body.append(h('tr', null, nameCell, h('td', null, mode), vlanCell, remove));
+      } else {
+        const isDhcp = i.ip === 'dhcp';
+        body.append(h('tr', null,
+          nameCell,
+          h('td', null, isDhcp
+            ? h('span', { class: 'muted', title: 'Adresse demandée à un serveur DHCP' }, 'obtenue par DHCP')
+            : input(`if-${k}-ip`, i.ip || '', (v) => editDevice(name, (x) => { if (v) x.interfaces[k].ip = v; else delete x.interfaces[k].ip; }), { placeholder: 'aucune (ex. 10.0.1.10/24)', class: 'mono' })),
+          h('td', null, (() => {
+            const c = h('input', { type: 'checkbox', 'data-k': `if-${k}-dhcp`, title: "Demander l'adresse à un serveur DHCP" });
+            c.checked = isDhcp;
+            c.addEventListener('change', () => editDevice(name, (x) => { if (c.checked) x.interfaces[k].ip = 'dhcp'; else delete x.interfaces[k].ip; }));
+            return c;
+          })()),
+          h('td', null, (() => {
+            const c = h('input', { type: 'checkbox', 'data-k': `if-${k}-mgmt`, title: "Interface d'administration" });
+            c.checked = !!i.management;
+            c.addEventListener('change', () => editDevice(name, (x) => { if (c.checked) x.interfaces[k].management = true; else delete x.interfaces[k].management; }));
+            return c;
+          })()),
+          remove));
+      }
+    });
+    table.append(body);
+    root.append(h('h3', null, 'Interfaces'), table,
+      h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => {
+        x.interfaces = x.interfaces || [];
+        x.interfaces.push({ name: nextIfaceName(x, x.type === 'switch' ? 'port' : 'eth') });
+      }) }, d.type === 'switch' ? '+ port' : '+ interface'));
+
+    if (!isIp(d.type)) return;
+
+    // Routes.
+    const routes = d.routes || [];
+    const rt = h('table', { class: 'grid' }, h('thead', null, h('tr', null, ['Destination', 'Via', ''].map((t) => h('th', null, t)))));
+    const rb = h('tbody');
+    routes.forEach((r, k) => rb.append(h('tr', null,
+      h('td', null, input(`rt-${k}-dest`, r.dest, (v) => editDevice(name, (x) => { x.routes[k].dest = v; }), { class: 'mono', placeholder: '10.0.2.0/24' })),
+      h('td', null, input(`rt-${k}-via`, r.via, (v) => editDevice(name, (x) => { x.routes[k].via = v; }), { class: 'mono', placeholder: '10.255.0.2' })),
+      h('td', null, del('Supprimer la route', () => editDevice(name, (x) => { x.routes.splice(k, 1); }))))));
+    rt.append(rb);
+    const addRoute = h('div', { class: 'add-row' },
+      input('rt-new-dest', '', () => {}, { class: 'mono', placeholder: 'destination (10.0.2.0/24)' }),
+      input('rt-new-via', '', () => {}, { class: 'mono', placeholder: 'via (10.255.0.2)' }),
+      h('button', { type: 'button', class: 'add', onclick: () => {
+        const dest = root.querySelector('[data-k="rt-new-dest"]').value.trim();
+        const via = root.querySelector('[data-k="rt-new-via"]').value.trim();
+        if (!dest || !via) { banner('Indique la destination et le prochain saut.'); return; }
+        editDevice(name, (x) => { x.routes = x.routes || []; x.routes.push({ dest, via }); });
+      } }, '+ route'));
+    root.append(h('h3', null, 'Routes statiques'), routes.length ? rt : h('p', { class: 'muted' }, 'Aucune.'), addRoute);
+
+    // Services.
+    const svcs = d.services || [];
+    const st = h('table', { class: 'grid' }, h('thead', null, h('tr', null, ['Proto', 'Port', 'Nom', ''].map((t) => h('th', null, t)))));
+    const sb = h('tbody');
+    svcs.forEach((sv, k) => sb.append(h('tr', null,
+      h('td', null, select(`sv-${k}-proto`, sv.proto, [['tcp', 'tcp'], ['udp', 'udp']], (v) => editDevice(name, (x) => { x.services[k].proto = v; }))),
+      h('td', null, input(`sv-${k}-port`, sv.port, (v) => editDevice(name, (x) => { x.services[k].port = Number(v); }), { class: 'mono narrow', inputmode: 'numeric' })),
+      h('td', null, input(`sv-${k}-name`, sv.name, (v) => editDevice(name, (x) => { x.services[k].name = v || 'service'; }))),
+      h('td', null, del('Arrêter le service', () => editDevice(name, (x) => { x.services.splice(k, 1); }))))));
+    st.append(sb);
+    root.append(h('h3', null, 'Services'), svcs.length ? st : h('p', { class: 'muted' }, 'Aucun.'),
+      h('div', { class: 'btn-row' },
+        ...[['http', 'tcp', 80], ['ssh', 'tcp', 22], ['echo', 'udp', 7]].map(([n, p, port]) => h('button', {
+          type: 'button', class: 'add',
+          onclick: () => editDevice(name, (x) => {
+            x.services = x.services || [];
+            if (x.services.some((o) => o.proto === p && o.port === port)) return false;
+            x.services.push({ proto: p, port, name: n });
+            return true;
+          }),
+        }, `+ ${n}`))));
+
+    renderDhcpDnsForm(root, d);
+
+    // Filtrage.
+    if (!isRouter(d.type)) return;
+    const fw = d.type === 'firewall';
+    const acl = d.acl || {};
+    const rules = acl.rules || [];
+    const withAcl = (x) => { x.acl = x.acl || {}; x.acl.rules = x.acl.rules || []; return x.acl; };
+    root.append(h('h3', null, 'Filtrage'),
+      h('div', { class: 'form-grid' },
+        h('label', null, 'Par défaut'),
+        select('acl-default', acl.default || (fw ? 'deny' : 'allow'), [['allow', 'tout autoriser'], ['deny', 'tout refuser']], (v) => editDevice(name, (x) => { withAcl(x).default = v; })),
+        h('label', null, 'Suivi'),
+        checkbox('acl-stateful', acl.stateful === undefined || acl.stateful === null ? fw : acl.stateful, (v) => editDevice(name, (x) => { withAcl(x).stateful = v; }), 'les réponses repassent')));
+    const ifOpts = [['', 'toutes'], ...(d.interfaces || []).map((i) => [i.name, i.name])];
+    const at = h('table', { class: 'grid acl' }, h('thead', null, h('tr', null, ['#', 'Action', 'Proto', 'Source', 'Destination', 'Port', 'Entrée', ''].map((t) => h('th', null, t)))));
+    const ab = h('tbody');
+    rules.forEach((r, k) => {
+      const set = (field) => (v) => editDevice(name, (x) => { const rr = withAcl(x).rules[k]; if (v) rr[field] = v; else delete rr[field]; });
+      ab.append(h('tr', null,
+        h('td', { class: 'muted' }, String(k + 1)),
+        h('td', null, select(`acl-${k}-action`, r.action, [['allow', 'allow'], ['deny', 'deny']], set('action'))),
+        h('td', null, select(`acl-${k}-proto`, r.proto || 'any', [['any', 'any'], ['icmp', 'icmp'], ['tcp', 'tcp'], ['udp', 'udp']], (v) => set('proto')(v === 'any' ? '' : v))),
+        h('td', null, input(`acl-${k}-src`, r.src || '', set('src'), { class: 'mono', placeholder: 'tout' })),
+        h('td', null, input(`acl-${k}-dst`, r.dst || '', set('dst'), { class: 'mono', placeholder: 'tout' })),
+        h('td', null, input(`acl-${k}-port`, r.port || '', set('port'), { class: 'mono narrow', placeholder: '—' })),
+        h('td', null, select(`acl-${k}-in`, r.in || '', ifOpts, set('in'))),
+        h('td', null, del('Supprimer la règle', () => editDevice(name, (x) => { withAcl(x).rules.splice(k, 1); })))));
+    });
+    at.append(ab);
+    root.append(rules.length ? at : h('p', { class: 'muted' }, 'Aucune règle.'),
+      h('div', { class: 'btn-row' },
+        h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { withAcl(x).rules.push({ action: 'allow', proto: 'tcp', port: '80' }); }) }, '+ autoriser'),
+        h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { withAcl(x).rules.push({ action: 'deny' }); }) }, '+ refuser')));
+  }
+
+  /** Relais DHCP (routeurs), serveur DHCP et serveur DNS d'un équipement IP. */
+  function renderDhcpDnsForm(root, d) {
+    const name = d.name;
+    // Relais : une interface de routeur transmet les demandes de son réseau au serveur.
+    if (isRouter(d.type)) {
+      const rows = (d.interfaces || []).map((i, k) => h('tr', null,
+        h('td', { class: 'mono' }, i.name),
+        h('td', null, input(`relay-${k}`, i.dhcp_relay || '', (v) => editDevice(name, (x) => {
+          if (v) x.interfaces[k].dhcp_relay = v; else delete x.interfaces[k].dhcp_relay;
+        }), { class: 'mono', placeholder: 'aucun (IP du serveur DHCP)' }))));
+      root.append(h('h3', null, 'Relais DHCP'),
+        h('p', { class: 'muted' }, 'Une demande DHCP est une diffusion : un routeur ne la transmet que si l’interface du réseau des postes la relaie vers le serveur.'),
+        h('table', { class: 'grid' }, h('thead', null, h('tr', null, h('th', null, 'Interface'), h('th', null, 'Serveur visé'))), h('tbody', null, rows)));
+    }
+
+    // Serveur DHCP.
+    const dhcp = d.dhcp;
+    root.append(h('h3', null, 'Serveur DHCP'));
+    if (!dhcp) {
+      root.append(h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => {
+        // Plage proposée : le réseau de la première interface adressée.
+        const addr = (x.interfaces || []).map((i) => i.ip).find((ip) => ip && ip !== 'dhcp');
+        const m = addr && /^(\d+)\.(\d+)\.(\d+)\.\d+\/(\d+)$/.exec(addr);
+        if (!m) { banner('Donne d’abord une adresse fixe à une interface de cet équipement.'); return false; }
+        const net = `${m[1]}.${m[2]}.${m[3]}`;
+        const gw = isRouter(x.type) ? addr.split('/')[0] : x.gateway;
+        x.dhcp = { pools: [{ network: `${net}.0/24`, range: `${net}.100-${net}.150`, ...(gw ? { gateway: gw } : {}) }] };
+        return true;
+      }) }, '+ serveur DHCP'));
+    } else {
+      const pools = dhcp.pools || [];
+      const pt = h('table', { class: 'grid' }, h('thead', null, h('tr', null, ['Réseau', 'Plage', 'Passerelle', 'DNS', ''].map((t) => h('th', null, t)))));
+      const pb = h('tbody');
+      pools.forEach((p, k) => {
+        const set = (field) => (v) => editDevice(name, (x) => { const q = x.dhcp.pools[k]; if (v) q[field] = v; else delete q[field]; });
+        pb.append(h('tr', null,
+          h('td', null, input(`pool-${k}-net`, p.network, set('network'), { class: 'mono' })),
+          h('td', null, input(`pool-${k}-range`, p.range, set('range'), { class: 'mono', placeholder: 'première-dernière' })),
+          h('td', null, input(`pool-${k}-gw`, p.gateway || '', set('gateway'), { class: 'mono', placeholder: '—' })),
+          h('td', null, input(`pool-${k}-dns`, p.dns || '', set('dns'), { class: 'mono', placeholder: '—' })),
+          h('td', null, del('Supprimer la plage', () => editDevice(name, (x) => {
+            x.dhcp.pools.splice(k, 1);
+            if (!x.dhcp.pools.length) delete x.dhcp;
+          })))));
+      });
+      pt.append(pb);
+      root.append(
+        checkbox('dhcp-on', dhcp.enabled !== false, (v) => editDevice(name, (x) => { if (v) delete x.dhcp.enabled; else x.dhcp.enabled = false; }), 'service démarré'),
+        pt,
+        h('div', { class: 'btn-row' },
+          h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { x.dhcp.pools.push({ network: '10.0.9.0/24', range: '10.0.9.100-10.0.9.150' }); }) }, '+ plage'),
+          h('button', { type: 'button', class: 'danger', onclick: () => editDevice(name, (x) => { delete x.dhcp; }) }, 'Supprimer le serveur')));
+    }
+
+    // Serveur DNS.
+    const dns = d.dns_server;
+    root.append(h('h3', null, 'Serveur DNS'));
+    if (!dns) {
+      root.append(h('button', { type: 'button', class: 'add', onclick: () => editDevice(name, (x) => { x.dns_server = { records: {} }; }) }, '+ serveur DNS'));
+      return;
+    }
+    const records = Object.entries(dns.records || {});
+    const rt = h('table', { class: 'grid' }, h('thead', null, h('tr', null, ['Nom', 'Adresse', ''].map((t) => h('th', null, t)))));
+    const rb = h('tbody');
+    records.forEach(([rname, rip], k) => rb.append(h('tr', null,
+      h('td', null, input(`rec-${k}-name`, rname, (v) => editDevice(name, (x) => {
+        if (!v || v === rname) return false;
+        const recs = x.dns_server.records; const ip = recs[rname]; delete recs[rname]; recs[v] = ip;
+        return true;
+      }), { class: 'mono' })),
+      h('td', null, input(`rec-${k}-ip`, rip, (v) => editDevice(name, (x) => { if (!v) return false; x.dns_server.records[rname] = v; return true; }), { class: 'mono' })),
+      h('td', null, del(`Supprimer ${rname}`, () => editDevice(name, (x) => { delete x.dns_server.records[rname]; }))))));
+    rt.append(rb);
+    root.append(
+      checkbox('dns-on', dns.enabled !== false, (v) => editDevice(name, (x) => { if (v) delete x.dns_server.enabled; else x.dns_server.enabled = false; }), 'service démarré'),
+      records.length ? rt : h('p', { class: 'muted' }, 'Zone vide.'),
+      h('div', { class: 'add-row' },
+        input('rec-new-name', '', () => {}, { class: 'mono', placeholder: 'nom (web.lan)' }),
+        input('rec-new-ip', '', () => {}, { class: 'mono', placeholder: 'adresse' }),
+        h('button', { type: 'button', class: 'add', onclick: () => {
+          const n = root.querySelector('[data-k="rec-new-name"]').value.trim();
+          const a = root.querySelector('[data-k="rec-new-ip"]').value.trim();
+          if (!n || !a) { banner('Indique le nom et l’adresse.'); return; }
+          editDevice(name, (x) => { x.dns_server.records = x.dns_server.records || {}; x.dns_server.records[n] = a; });
+        } }, '+ nom')),
+      h('div', { class: 'btn-row' },
+        h('button', { type: 'button', class: 'danger', onclick: () => editDevice(name, (x) => { delete x.dns_server; }) }, 'Supprimer le serveur DNS')));
+  }
+
+  function renderLinkForm(root, def, sel) {
+    const i = def.links.findIndex((l) => l.a === sel.a && l.b === sel.b);
+    if (i < 0) { renderNetworkForm(root, def); return; }
+    const l = def.links[i];
+    const used = usedEndpoints(def);
+    const endSelect = (key, ep) => {
+      const [dev, cur] = ep.split(/:(.*)/s);
+      const d = devOf(def, dev);
+      const opts = (d ? ifaceNames(d) : [cur]).filter((n) => n === cur || !used.has(`${dev}:${n}`)).map((n) => [n, n]);
+      return h('div', { class: 'endpoint' }, h('strong', null, dev), ' : ',
+        select(key, cur, opts, (v) => {
+          const next = `${dev}:${v}`;
+          state.build.sel = key === 'ln-a' ? { kind: 'link', a: next, b: l.b } : { kind: 'link', a: l.a, b: next };
+          edit((df) => { const x = df.links[i]; if (key === 'ln-a') x.a = next; else x.b = next; });
+        }));
+    };
+    root.append(
+      h('div', { class: 'insp-head' }, h('h3', null, 'Câble'),
+        h('button', { type: 'button', class: 'danger', onclick: () => guarded(deleteSelection) }, 'Supprimer')),
+      endSelect('ln-a', l.a), endSelect('ln-b', l.b),
+      h('div', { class: 'form-grid' },
+        h('label', null, 'Latence (ms)'),
+        input('ln-lat', l.latency_us === undefined || l.latency_us === null ? '1' : String(l.latency_us / 1000), (v) => edit((df) => {
+          const ms = Number(v.replace(',', '.'));
+          if (!Number.isFinite(ms) || ms < 0) return false;
+          df.links[i].latency_us = Math.round(ms * 1000);
+          return true;
+        }), { class: 'mono narrow', inputmode: 'decimal' }),
+        h('label', null, 'Perte (%)'),
+        input('ln-loss', l.loss ? String(Math.round(l.loss * 1000) / 10) : '0', (v) => edit((df) => {
+          const pct = Number(v.replace(',', '.'));
+          if (!Number.isFinite(pct) || pct < 0 || pct > 100) return false;
+          if (pct === 0) delete df.links[i].loss; else df.links[i].loss = pct / 100;
+          return true;
+        }), { class: 'mono narrow', inputmode: 'decimal' })),
+    );
+  }
+
+  function initBuild() {
+    $('#build-toggle').addEventListener('click', () => guarded(toggleBuild));
+    $('#bt-exit').addEventListener('click', exitBuild);
+    $('#bt-select').addEventListener('click', () => setTool('select'));
+    $('#bt-cable').addEventListener('click', () => setTool(state.build.tool === 'cable' ? 'select' : 'cable'));
+    $('#bt-undo').addEventListener('click', () => guarded(undo));
+    $('#bt-redo').addEventListener('click', () => guarded(redo));
+    $('#bt-delete').addEventListener('click', () => guarded(deleteSelection));
+    $('#bt-auto').addEventListener('click', () => guarded(autoAddress));
+    $('#bt-netiv').addEventListener('click', () => guarded(() => download('netiv')));
+    $('#bt-yaml').addEventListener('click', () => guarded(() => download('yaml')));
+    $('#file-import').addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (f) guarded(() => importFile(f));
+    });
+
+    // Palette : clic = ajout au centre de la vue ; glisser = ajout à l'endroit visé.
+    for (const b of $$('.palette button')) {
+      const kind = b.dataset.kind;
+      const icon = s('svg', { viewBox: '-14 -14 28 28', class: `pal-icon kind-${kind}`, 'aria-hidden': 'true' }, ...glyph(kind));
+      b.prepend(icon);
+      b.addEventListener('click', () => addDevice(kind, null));
+      b.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/x-netiv-kind', kind);
+        e.dataTransfer.effectAllowed = 'copy';
+      });
+    }
+    const svg = $('#canvas');
+    svg.addEventListener('dragover', (e) => {
+      if (state.build.on && Array.from(e.dataTransfer.types).includes('application/x-netiv-kind')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    });
+    svg.addEventListener('drop', (e) => {
+      const kind = e.dataTransfer.getData('application/x-netiv-kind');
+      if (!state.build.on || !kind) return;
+      e.preventDefault();
+      addDevice(kind, svgPoint(svg, e));
+    });
+
+    // Câble « élastique » qui suit la souris.
+    svg.addEventListener('pointermove', (e) => {
+      const b = state.build;
+      const overlay = $('#canvas .overlay');
+      const old = $('#canvas .rubber');
+      if (!b.on || !b.cableFrom || !overlay) { if (old) old.remove(); return; }
+      const a = state.positions.get(b.cableFrom);
+      if (!a) return;
+      const p = svgPoint(svg, e);
+      const line = old || s('line', { class: 'rubber' });
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+      line.setAttribute('x2', p.x); line.setAttribute('y2', p.y);
+      if (!old) overlay.append(line);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      const typing = t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if (typing || document.querySelector('dialog[open]')) return;
+      const b = state.build;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl && !e.altKey && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); guarded(toggleBuild); return; }
+      if (!b.on) return;
+      if (ctrl && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) { e.preventDefault(); guarded(undo); }
+      else if (ctrl && (e.key === 'y' || e.key === 'Y' || ((e.key === 'z' || e.key === 'Z') && e.shiftKey))) { e.preventDefault(); guarded(redo); }
+      else if (ctrl || e.altKey) return;
+      else if (e.key === 'c' || e.key === 'C') { e.preventDefault(); setTool(b.tool === 'cable' ? 'select' : 'cable'); }
+      else if (e.key === 'v' || e.key === 'V') { e.preventDefault(); setTool('select'); }
+      else if (e.key === 'Escape') { if (b.cableFrom) { b.cableFrom = null; renderCanvas(); renderIssues(); } else setTool('select'); }
+      else if (e.key === 'Delete' || e.key === 'Backspace') { if (b.sel) { e.preventDefault(); guarded(deleteSelection); } }
+    });
+  }
+
   // ---- appareil
 
   async function selectDevice(name) {
@@ -791,6 +1767,7 @@
   }
 
   function renderDevice(d) {
+    if (state.build.on) { renderInspector(); return; }
     const root = clear($('#tab-device'));
     if (!d) {
       root.append(h('p', { class: 'muted' }, 'Clique sur un équipement du schéma pour voir ses interfaces, ses routes, son cache ARP, ses règles…'));
@@ -945,7 +1922,7 @@
 
   const KIND_FILTERS = [
     ['app', 'Échanges'], ['frame_sent', 'Envois'], ['frame_received', 'Réceptions'], ['switch', 'Commutation'],
-    ['arp', 'ARP'], ['route', 'Routage'], ['drop', 'Refus'], ['config', 'Config'],
+    ['arp', 'ARP'], ['route', 'Routage'], ['dhcp', 'DHCP'], ['dns', 'DNS'], ['drop', 'Refus'], ['config', 'Config'],
   ];
 
   async function loadTrace() {
@@ -1294,6 +2271,7 @@
     initTheme();
     initLayout();
     initCanvasControls();
+    initBuild();
     $('#profile-chip').addEventListener('click', openProfile);
 
     for (const b of $$('.tabs button')) b.addEventListener('click', () => selectTab(b.dataset.tab));
@@ -1344,6 +2322,7 @@
     wire();
     renderLabs();
     renderStage();
+    updateBuildToggle();
     renderDevice(null);
     renderJourney();
     renderChallenge();
@@ -1352,8 +2331,21 @@
       await loadProfile();
       consoleLine(`NETIV ${state.info.version} — tape « help » pour la liste des commandes.`, 'note');
       renderLibrary();
-      // Un premier réseau tout de suite, pour que l'écran ne soit pas vide.
-      await guarded(() => createLab({ builtin: 'office' }));
+      // Labs encore ouverts sur le serveur (page rechargée) : on les reprend.
+      const open = await api('GET', '/api/labs');
+      if (open.labs.length) {
+        state.labs = open.labs.map((l) => ({ id: l.id, name: l.name || l.id }));
+        const last = state.labs[state.labs.length - 1];
+        await guarded(async () => {
+          state.current = last.id;
+          applySnapshot(await api('GET', `/api/labs/${last.id}`));
+          await loadTransactions({ selectNewest: true });
+          renderChallenge();
+        });
+      } else {
+        // Un premier réseau tout de suite, pour que l'écran ne soit pas vide.
+        await guarded(() => createLab({ builtin: 'office' }));
+      }
     } catch (e) {
       banner(e.message);
     }

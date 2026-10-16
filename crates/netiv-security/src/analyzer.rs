@@ -133,6 +133,7 @@ pub fn analyze(sim: &Simulation) -> Report {
     a.cross_zone_access();
     a.permissive_rules();
     a.cleartext_services();
+    a.rogue_dhcp();
     a.trunks();
     a.single_points_of_failure();
     let mut findings = a.findings;
@@ -693,6 +694,33 @@ impl Analyzer<'_> {
                 "Remplacer par une variante chiffrée (SSH, SFTP, SNMPv3) ou restreindre l'accès à un réseau d'administration.",
             );
         }
+    }
+
+    /// SEC-012 : serveur DHCP sur une machine d'utilisateur (pirate, ou
+    /// oubli de configuration) : il peut distribuer une fausse passerelle et
+    /// détourner le trafic de tout le réseau local.
+    fn rogue_dhcp(&mut self) {
+        let rogues: Vec<String> = self
+            .sim
+            .devices()
+            .iter()
+            .filter(|d| netiv_diagnostics::dhcpdns::is_rogue_server(self.sim, d.id))
+            .map(|d| d.name.clone())
+            .collect();
+        if rogues.is_empty() {
+            return;
+        }
+        self.push(
+            "SEC-012",
+            Severity::High,
+            "Serveur DHCP sur une machine d'utilisateur",
+            rogues.clone(),
+            format!(
+                "{} distribue des adresses alors que ce n'est pas un serveur de l'infrastructure : un serveur DHCP pirate peut annoncer une fausse passerelle ou un faux DNS et intercepter le trafic des postes.",
+                rogues.join(", ")
+            ),
+            "Arrêter ce service ; sur les switches, n'autoriser les réponses DHCP que sur les ports des serveurs légitimes (DHCP snooping).",
+        );
     }
 
     /// SEC-010 : trunk qui transporte tous les VLAN.

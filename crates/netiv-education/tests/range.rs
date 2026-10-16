@@ -255,8 +255,18 @@ fn inconsistent_scenarios_are_rejected_with_a_reason() {
 #[test]
 fn the_catalog_counts_cyber_ranges_under_security() {
     let cat = builtin::catalog();
-    assert_eq!(cat.len(), 18);
-    assert_eq!(cat.iter().filter(|(_, t)| t == "security").count(), 2 + 3);
+    assert_eq!(
+        cat.len(),
+        builtin::challenges().len() + builtin::ranges().len()
+    );
+    let security_challenges = builtin::challenges()
+        .iter()
+        .filter(|c| c.topic == "security")
+        .count();
+    assert_eq!(
+        cat.iter().filter(|(_, t)| t == "security").count(),
+        security_challenges + builtin::ranges().len()
+    );
 }
 
 #[test]

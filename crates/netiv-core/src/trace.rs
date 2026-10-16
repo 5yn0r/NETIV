@@ -345,6 +345,38 @@ pub enum TraceKind {
         /// Description lisible.
         description: String,
     },
+    /// Événement DHCP (client, serveur ou relais).
+    Dhcp {
+        /// Interface concernée.
+        iface: IfaceId,
+        /// Ce qui s'est passé.
+        event: crate::dhcp::DhcpEvent,
+    },
+    /// Début d'une résolution de nom.
+    DnsLookup {
+        /// Nom demandé.
+        name: String,
+        /// Serveur interrogé (`None` : réponse prise dans le cache, ou aucun serveur).
+        server: Option<Ipv4Addr>,
+    },
+    /// Résultat d'une résolution de nom.
+    DnsResult {
+        /// Nom demandé.
+        name: String,
+        /// Issue.
+        outcome: crate::dns::DnsOutcome,
+        /// Réponse prise dans le cache, sans question au serveur.
+        cached: bool,
+    },
+    /// Un serveur DNS répond à une question.
+    DnsAnswered {
+        /// Nom demandé.
+        name: String,
+        /// Client.
+        from: Ipv4Addr,
+        /// Adresse trouvée (`None` : NXDOMAIN).
+        answer: Option<Ipv4Addr>,
+    },
     /// Une règle de filtrage refuse un paquet.
     AclDecision {
         /// Numéro de la règle (`None` : politique par défaut).

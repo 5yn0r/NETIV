@@ -34,13 +34,18 @@ L'interface web n'utilise que cette API : tout ce qu'elle fait peut être script
 | DELETE | `/api/labs/{id}` | Ferme le lab |
 | POST | `/api/labs/{id}/exec` | Exécute une ligne de commande NETIV |
 | GET | `/api/labs/{id}/trace?since=N&limit=M` | Événements de trace à partir de l'index `N` (500 par défaut, 2 000 au plus) |
-| GET | `/api/labs/{id}/transactions` | Les 50 derniers échanges (ping, curl, udp) et leur issue |
+| GET | `/api/labs/{id}/transactions` | Les 50 derniers échanges (ping, curl, udp, DHCP, DNS) et leur issue |
 | GET | `/api/labs/{id}/journey/{tid}` | Parcours d'un échange : étapes animables + texte |
 | GET | `/api/labs/{id}/device/{name}` | Tables d'un équipement (interfaces, routes, ARP, MAC, ACL, services) |
 | GET | `/api/labs/{id}/health` | Score de santé par catégorie |
 | GET | `/api/labs/{id}/security` | Analyse de sécurité |
 | GET | `/api/labs/{id}/docs?format=md\|json\|yaml` | Documentation générée |
 | POST | `/api/labs/{id}/what-if` | Impact d'un changement |
+| GET | `/api/labs/{id}/topology?format=json\|yaml\|netiv` | Topologie actuelle (éditeur ; texte à télécharger) |
+| PUT | `/api/labs/{id}/topology` | Remplace le réseau (éditeur) |
+| POST | `/api/labs/{id}/topology/validate` | Vérifie une topologie sans rien changer |
+| POST | `/api/labs/{id}/topology/autoconfig` | Adressage automatique |
+| PUT | `/api/labs/{id}/positions` | Positions des équipements sur le schéma |
 
 ### Créer un lab
 
@@ -48,7 +53,8 @@ Le corps contient **exactement une** source :
 
 | Corps | Effet |
 |---|---|
-| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`) |
+| `{"empty": "mon-reseau"}` | Réseau vide, à construire dans l'éditeur |
+| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`, `dhcp`) |
 | `{"yaml": "network: …"}` | Topologie fournie (YAML, JSON ou `.netiv`) |
 | `{"generate": {"type": "campus", "routers": 5, "hosts": 12, "seed": 1}}` | Topologie générée |
 | `{"challenge": "beginner-01"}` | Défi livré |
@@ -75,8 +81,10 @@ Renvoyé par `GET /api/labs/{id}`, à la création et après chaque commande :
   "pending": 0, "trace_len": 66,
   "devices": [
     { "name": "PC1", "kind": "host", "role": "user", "forwarding": false, "filtered": false,
+      "dhcp_server": null, "dns_server": null,
       "ifaces": [ { "name": "eth0", "ip": "192.168.1.10/24", "mac": "02:4E:49:00:00:01",
-                    "up": true, "link_up": true, "peer": "SW1:port1" } ] }
+                    "up": true, "link_up": true, "peer": "SW1:port1",
+                    "dhcp": false, "dhcp_relay": null } ] }
   ],
   "links": [
     { "a": "PC1:eth0", "a_device": "PC1", "b": "SW1:port1", "b_device": "SW1",
@@ -114,9 +122,35 @@ au plus 1 000 caractères.
 ### Événements de trace
 
 Chaque événement : `seq`, `time`, `time_us`, `device`, `trace_id`, `kind` (catégorie :
-`app`, `frame_sent`, `frame_received`, `switch`, `arp`, `route`, `drop`, `config`, `fault`…),
+`app`, `frame_sent`, `frame_received`, `switch`, `arp`, `route`, `dhcp`, `dns`, `drop`, `config`,
+`fault`),
 `text` (description lisible) et `edge` (`{"from": "R1", "to": "R2"}` quand une trame traverse un
 câble, sinon `null` ; c'est ce qui anime le paquet sur le schéma).
+
+### Éditeur de réseau
+
+L'éditeur travaille sur la **description** du réseau (même format que les fichiers YAML, en JSON) :
+
+```bash
+# Lire
+curl -s http://127.0.0.1:8787/api/labs/lab-1/topology            # {"topology": {...}}
+# Vérifier sans appliquer
+curl -s -X POST http://127.0.0.1:8787/api/labs/lab-1/topology/validate \
+     -H 'Content-Type: application/json' -d '{"topology": {...}}'   # {"errors": [], "warnings": [...]}
+# Appliquer
+curl -s -X PUT http://127.0.0.1:8787/api/labs/lab-1/topology \
+     -H 'Content-Type: application/json' -d '{"topology": {...}}'   # {"warnings": [...], "snapshot": {...}}
+```
+
+- Appliquer **reconstruit** le lab : la trace repart de zéro (environ 1 ms pour 150 équipements).
+- Topologie invalide : 400, avec les problèmes dans `error` ; le lab garde son état précédent.
+- Pendant un défi ou un cyber range : **409** (`edit_lock` dans l'instantané en donne la raison,
+  `editable` vaut `false`).
+- Au plus 2 000 équipements et 4 000 câbles par topologie.
+- `autoconfig` renvoie `{"changes": ["PC1:eth0 → 10.0.1.10/24", …], "snapshot": …}`.
+- `PUT …/positions` avec `{"positions": {"PC1": [120, 80]}}` mémorise la disposition sans
+  reconstruire. Les positions sont aussi renvoyées dans l'instantané (`devices[].pos`) et exportées
+  dans les fichiers.
 
 ### What-if
 

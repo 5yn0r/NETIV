@@ -1,0 +1,23 @@
+id: beginner-06
+title: Plus personne n'a d'adresse
+topic: services
+difficulty: easy
+description: |
+  Ce matin, après le redémarrage des postes du bureau (réseau 10.10.1.0/24),
+  PC1 n'arrive plus à joindre le serveur 10.10.2.10. « show ifaces PC1 » ne
+  montre aucune adresse IP. Les postes reçoivent pourtant leur adresse
+  automatiquement d'habitude… Trouve ce qui ne va pas et répare.
+time_limit_minutes: 15
+topology_ref: dhcp
+objective: { from: PC1, to: 10.10.2.10 }
+faults:
+  - dhcp_server_down: { device: SRV }
+solution:
+  cause: dhcp-server-down
+  device: SRV
+  explanation: |
+    Les postes demandent leur adresse à un serveur DHCP (SRV, via le relais de
+    R1). Le service DHCP de SRV était arrêté : les demandes restaient sans
+    réponse et PC1 abandonnait après quatre tentatives. Une fois le serveur
+    redémarré, le poste doit redemander une adresse (« dhcp PC1 renew »).
+  commands: ["dhcp server SRV on", "dhcp PC1 renew"]

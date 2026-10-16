@@ -1,6 +1,6 @@
 id: fundamentals
 title: Fondamentaux des réseaux
-description: Du câble au pare-feu, en dix leçons qui s'appuient sur des challenges.
+description: Du câble au pare-feu, en onze leçons qui s'appuient sur des challenges.
 lessons:
   - id: ethernet-mac
     title: Ethernet et adresses MAC
@@ -63,6 +63,20 @@ lessons:
       ports d'accès appartiennent à un VLAN ; les ports trunk transportent plusieurs
       VLAN, chaque trame portant son étiquette 802.1Q.
     challenges: [intermediate-04]
+  - id: dhcp-dns
+    title: DHCP et DNS
+    text: |
+      Un poste sans adresse fixe la demande par DHCP : il diffuse un Discover, un
+      serveur répond par une offre (Offer), le poste la demande (Request) et le serveur
+      confirme (Ack), avec la passerelle et le serveur DNS à utiliser. Une diffusion
+      ne traverse jamais un routeur : pour servir un autre réseau, le routeur doit
+      relayer les demandes. Le DNS traduit ensuite les noms (web.lan) en adresses.
+    try:
+      - "challenge start beginner-06"
+      - "trace 1"
+      - "ping PC1 web.lan"
+      - "show dhcp SRV"
+    challenges: [beginner-06]
   - id: services
     title: Services et ports
     text: |

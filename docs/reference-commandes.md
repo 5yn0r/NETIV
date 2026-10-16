@@ -24,16 +24,19 @@ refusées dans l'interface web.
 | `show vlan <switch>` | Mode des ports : accès (VLAN) ou trunk (VLAN autorisés, natif). |
 | `show acl <equip>` | Règles de filtrage, politique par défaut, suivi de connexion. |
 | `show services <equip>` | Services TCP/UDP à l'écoute. |
+| `show dhcp <equip>` | Client DHCP (adresse obtenue, serveur, passerelle, DNS), relais, serveur (plages, occupation, baux). |
+| `show dns <equip>` | Serveur DNS utilisé (configuré ou reçu par DHCP), zone hébergée. |
 
 ## Simulation
 
 | Commande | Effet | Exemple |
 |---|---|---|
-| `ping <equip> <ip> [n] [--step]` | Envoie `n` pings (1 par défaut) et affiche le résultat. Avec `--step`, programme seulement. | `ping PC1 192.168.2.10 3` |
+| `ping <equip> <ip\|nom> [n] [--step]` | Envoie `n` pings (1 par défaut) et affiche le résultat. Un nom est d'abord résolu par DNS (le résultat est mis en cache). Avec `--step`, programme seulement. | `ping PC1 192.168.2.10 3`, `ping PC1 web.lan` |
 | `step [n]` | Exécute `n` événements (1 par défaut) en les décrivant. | `step 5` |
 | `run` | Exécute tous les événements en attente. | |
-| `curl <equip> <ip> [port]` | Connexion TCP (poignée de main, requête, réponse, fermeture). Port 80 par défaut. | `curl PC1 192.168.2.10 80` |
-| `udp <equip> <ip> <port> [texte]` | Envoie un datagramme UDP et attend une réponse. | `udp PC1 10.0.0.5 53 test` |
+| `curl <equip> <ip\|nom> [port]` | Connexion TCP (poignée de main, requête, réponse, fermeture). Port 80 par défaut. | `curl PC1 192.168.2.10 80` |
+| `udp <equip> <ip\|nom> <port> [texte]` | Envoie un datagramme UDP et attend une réponse. | `udp PC1 10.0.0.5 7 test` |
+| `nslookup <equip> <nom>` | Résout un nom auprès du serveur DNS de l'équipement. | `nslookup PC1 web.lan` |
 | `time` | Date simulée et nombre d'événements en attente. | |
 
 ## Observer
@@ -53,7 +56,7 @@ refusées dans l'interface web.
 | `chaos undo` | Répare toutes les pannes injectées. |
 | `chaos reveal` | Montre les pannes en cours. |
 | `chaos list` | Catalogue des 17 pannes (couche, difficulté). |
-| `diagnose <equip> <ip> [tcp\|udp <port>]` | Contrôles `[✓]/[✗]` (interface, câble, VLAN, IP, ARP, passerelle, route aller et retour, filtrage, service) et **cause racine**. |
+| `diagnose <equip> <ip\|nom> [tcp\|udp <port>]` | Contrôles `[✓]/[✗]` (interface, câble, VLAN, IP, ARP, passerelle, route aller et retour, filtrage, service) et **cause racine**. Un poste sans adresse est d'abord examiné côté DHCP ; avec un nom, la résolution DNS est contrôlée en premier. |
 | `hint` | Indice suivant, du plus vague (couche) à la solution (dernier niveau). |
 | `baseline save\|clear` | Mémorise l'état sain : `diagnose` indique alors la valeur attendue (« attendu : 192.168.1.1 »). |
 
@@ -61,7 +64,7 @@ refusées dans l'interface web.
 
 | Commande | Effet |
 |---|---|
-| `ip <equip> <iface> <cidr\|none>` | Change ou retire l'adresse IP. |
+| `ip <equip> <iface> <cidr\|none\|dhcp>` | Change ou retire l'adresse IP ; `dhcp` la fait demander à un serveur (une adresse fixe désactive le DHCP de l'interface). |
 | `gateway <equip> <ip\|none>` | Change ou retire la passerelle par défaut. |
 | `route add <equip> <cidr> via <ip>` | Ajoute une route statique. |
 | `route del <equip> <cidr>` | Supprime les routes vers ce réseau. |
@@ -82,6 +85,23 @@ refusées dans l'interface web.
 | `acl stateful <equip> on\|off` | Suivi de connexion : les réponses aux flux autorisés repassent. |
 
 Chaque modification est tracée (`log`) : on voit dans la trace *quand* la configuration a changé.
+
+## DHCP et DNS
+
+| Commande | Effet | Exemple |
+|---|---|---|
+| `dhcp <equip> [renew\|release] [iface]` | Redemande (`renew`, par défaut) ou rend (`release`) l'adresse obtenue par DHCP. Affiche le résultat de l'échange. | `dhcp PC1`, `dhcp PC1 release` |
+| `dhcp server <equip> on\|off` | Démarre ou arrête le serveur DHCP. Les clients sans adresse doivent ensuite la redemander. | `dhcp server SRV on` |
+| `dhcp pool add <equip> <réseau> <première>-<dernière> [gw <ip>] [dns <ip>] [lease <s>]` | Ajoute (ou remplace) la plage d'un réseau ; crée le serveur s'il n'existe pas. | `dhcp pool add SRV 10.10.1.0/24 10.10.1.100-10.10.1.150 gw 10.10.1.1 dns 10.10.2.10` |
+| `dhcp pool del <equip> <réseau>` | Supprime une plage. | `dhcp pool del SRV 10.10.2.0/24` |
+| `dhcp relay <routeur> <iface> <ip\|none>` | Relaie les demandes DHCP du réseau de cette interface vers un serveur (« ip helper-address »). | `dhcp relay R1 eth0 10.10.2.10` |
+| `dns <equip> <ip\|none>` | Serveur DNS utilisé par l'équipement (sinon : celui reçu par DHCP). | `dns PC1 10.10.2.10` |
+| `dns server <equip> on\|off` | Démarre ou arrête le serveur DNS. | `dns server SRV off` |
+| `dns record add <equip> <nom> <ip>` | Ajoute ou modifie un enregistrement A dans la zone (crée le serveur au besoin). | `dns record add SRV web.lan 10.10.2.10` |
+| `dns record del <equip> <nom>` | Supprime un nom. | `dns record del SRV web.lan` |
+
+Au chargement d'un réseau, les postes configurés par DHCP demandent leur adresse : ces échanges
+sont les premières transactions de la trace (`trace 1` montre un DORA complet, relais compris).
 
 ## Apprendre
 
@@ -109,6 +129,7 @@ Chaque modification est tracée (`log`) : on voit dans la trace *quand* la confi
 | `health` | Score de santé en 6 catégories (formules : annexe B de la spec). | |
 | `docs md\|json\|yaml [fichier]` | Documentation générée du réseau. | `docs md reseau.md` |
 | `topology generate --type <type> --routers N --hosts M [--seed S] [--save f.yaml]` | Génère et charge un réseau (`lan`, `enterprise`, `campus`, `datacenter`, `isp`, `hybrid`, `cyber-range`). | `topology generate --type campus --routers 5 --hosts 20` |
+| `topology autoconfig` | Complète l'adressage d'un réseau dessiné (les interfaces `dhcp` ne sont pas touchées) : un réseau par segment (/30 entre deux routeurs, /24 sinon), IP des interfaces vides, passerelles, routes statiques par plus court chemin. N'écrase jamais une valeur existante. Refusé pendant un défi. | `topology autoconfig` |
 | `challenge generate --topic T --difficulty facile\|moyen\|difficile [--seed N] [--save f.netiv]` | Génère un défi auto-validé et le lance. | `challenge generate --topic routing --difficulty difficile` |
 
 ## Sécurité
@@ -117,7 +138,7 @@ Chaque modification est tracée (`log`) : on voit dans la trace *quand* la confi
 |---|---|
 | `security analyze` | Défauts de conception (SEC-001 à SEC-011), gravité HIGH/MEDIUM/LOW, recommandations. |
 | `capture save <fichier.nlv>` | Enregistre la trace dans une capture (JSON). |
-| `forensic analyze <fichier.nlv\|live> [--packets]` | Chronologie et détections : `port-scan`, `host-sweep`, `lateral-movement`, `beaconing`, `repeated-denials`, `arp-spoofing`. |
+| `forensic analyze <fichier.nlv\|live> [--packets]` | Chronologie et détections : `port-scan`, `host-sweep`, `lateral-movement`, `beaconing`, `repeated-denials`, `arp-spoofing`, `rogue-dhcp`. |
 | `range list` / `range start <id>` / `range show` / `range check` / `range finish` / `range giveup` | Cyber range : enquêter, corriger, désigner le coupable. |
 
 ## Partager

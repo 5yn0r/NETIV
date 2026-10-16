@@ -96,6 +96,7 @@
       <div class="stage-head">
         <h1 id="lab-title">Aucun réseau</h1>
         <span id="lab-meta" class="muted"></span>
+        <button id="build-toggle" class="build-toggle" type="button" aria-pressed="false" title="Construire ou modifier ce réseau  B">✎ Construire</button>
       </div>
 
       <div class="toolbar" role="group" aria-label="Actions">
@@ -109,10 +110,35 @@
         <button id="tb-run" type="button" title="Exécuter tous les événements en attente">Tout exécuter</button>
       </div>
 
+      <div id="buildbar" class="buildbar" role="toolbar" aria-label="Construire le réseau" hidden>
+        <div class="palette" role="group" aria-label="Ajouter un équipement (cliquer ou glisser sur le schéma)">
+          <button type="button" draggable="true" data-kind="host" title="Poste (cliquer ou glisser)">Poste</button>
+          <button type="button" draggable="true" data-kind="server" title="Serveur (cliquer ou glisser)">Serveur</button>
+          <button type="button" draggable="true" data-kind="router" title="Routeur (cliquer ou glisser)">Routeur</button>
+          <button type="button" draggable="true" data-kind="firewall" title="Pare-feu (cliquer ou glisser)">Pare-feu</button>
+          <button type="button" draggable="true" data-kind="switch" title="Switch (cliquer ou glisser)">Switch</button>
+        </div>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="tools" role="group" aria-label="Outil">
+          <button id="bt-select" type="button" aria-pressed="true" title="Sélectionner et déplacer  V">Sélection</button>
+          <button id="bt-cable" type="button" aria-pressed="false" title="Relier deux équipements  C">Câble</button>
+        </div>
+        <span class="sep" aria-hidden="true"></span>
+        <button id="bt-undo" type="button" title="Annuler  Ctrl+Z" aria-label="Annuler">↶</button>
+        <button id="bt-redo" type="button" title="Rétablir  Ctrl+Y" aria-label="Rétablir">↷</button>
+        <button id="bt-delete" type="button" title="Supprimer la sélection  Suppr" aria-label="Supprimer la sélection">🗑</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button id="bt-auto" type="button" title="Compléter l'adressage : IP, passerelles, routes">Adresser automatiquement</button>
+        <button id="bt-netiv" type="button" title="Télécharger le lab (.netiv)">⤓ .netiv</button>
+        <button id="bt-yaml" type="button" title="Télécharger la topologie (.yaml)">⤓ .yaml</button>
+        <button id="bt-exit" type="button" class="primary" title="Quitter le mode Construire  B">Terminer</button>
+      </div>
+      <div id="build-issues" class="issues" role="status" aria-live="polite" hidden></div>
+
       <div class="canvas-wrap">
         <svg id="canvas" role="img" aria-label="Schéma du réseau" tabindex="0"></svg>
         <div id="canvas-empty" class="empty">
-          <p><strong>Choisis un lab</strong> dans le catalogue pour voir son schéma.</p>
+          <p id="canvas-empty-text"><strong>Choisis un lab</strong> dans le catalogue pour voir son schéma.</p>
         </div>
         <div class="zoom" role="group" aria-label="Zoom du schéma">
           <button id="z-in" type="button" title="Zoomer  +" aria-label="Zoomer">+</button>
@@ -157,6 +183,8 @@
     </section>
   </main>
 
+  <input id="file-import" type="file" accept=".netiv,.yaml,.yml,.json" hidden>
+
   <dialog id="help-dialog" aria-labelledby="help-title">
     <form method="dialog">
       <h2 id="help-title">Aide</h2>
@@ -169,6 +197,10 @@
         <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>zoomer, dézoomer, tout afficher</dd>
         <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>espace</kbd></dt><dd>dans « Parcours » : étape précédente, suivante, lecture</dd>
         <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>dans la console : historique des commandes</dd>
+        <dt><kbd>B</kbd></dt><dd>mode Construire (dessiner, câbler, configurer)</dd>
+        <dt><kbd>C</kbd> <kbd>V</kbd></dt><dd>en mode Construire : outil Câble, outil Sélection</dd>
+        <dt><kbd>Suppr</kbd></dt><dd>supprimer l'équipement ou le câble sélectionné</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>annuler / rétablir une modification</dd>
         <dt><kbd>?</kbd></dt><dd>cette aide</dd>
       </dl>
       <p class="muted">Schéma : molette pour zoomer, glisser le fond pour se déplacer, glisser un équipement pour le placer.

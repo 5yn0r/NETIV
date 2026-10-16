@@ -3,8 +3,11 @@
 //! Un routeur est un hôte avec `forwarding = true` : il partage ARP, ICMP et
 //! la table de routage, et ajoute simplement le transfert de paquets.
 
-use std::collections::BTreeMap;
+mod dhcp;
+mod dns;
+
 use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use crate::acl::{Acl, Verdict};
@@ -13,7 +16,7 @@ use crate::device::{Command, Ctx, Effects};
 use crate::ids::{IfaceId, TimerId, TraceId};
 use crate::packet::{
     ArpOp, ArpPacket, DEFAULT_TTL, EtherPayload, Frame, IcmpMessage, IpPayload, Ipv4Packet,
-    L4Proto, TcpFlags, TcpSegment, UdpDatagram, UnreachCode,
+    L4Proto, TcpFlags, TcpSegment, UdpDatagram, UdpPayload, UnreachCode,
 };
 use crate::route::{self, Route, StaticRoute};
 use crate::service::Service;
@@ -108,6 +111,19 @@ enum TimerKind {
     TcpSyn { key: TcpKey },
     TcpIdle { key: TcpKey },
     UdpTimeout { port: u16 },
+    DhcpRetry { iface: IfaceId },
+    DnsTimeout { id: u16 },
+}
+
+/// Une résolution DNS en attente de réponse.
+#[derive(Clone, Debug)]
+struct DnsPending {
+    name: String,
+    then: crate::dns::AfterResolve,
+    trace_id: TraceId,
+    server: Ipv4Addr,
+    src_port: u16,
+    attempt: u8,
 }
 
 /// État d'un hôte ou d'un routeur.
@@ -127,6 +143,29 @@ pub struct IpNode {
     pub services: Vec<Service>,
     /// Règles de filtrage (appliquées aux paquets entrants).
     pub acl: Acl,
+    /// Interfaces configurées par DHCP.
+    pub dhcp_ifaces: BTreeSet<IfaceId>,
+    /// Relais DHCP : interface → serveur à qui transmettre les demandes.
+    pub dhcp_relay: BTreeMap<IfaceId, Ipv4Addr>,
+    /// Serveur DHCP hébergé par l'équipement.
+    pub dhcp_server: Option<crate::dhcp::DhcpServer>,
+    /// Serveur DNS configuré à la main (prioritaire sur celui reçu par DHCP).
+    pub dns: Option<Ipv4Addr>,
+    /// Serveur DNS hébergé par l'équipement.
+    pub dns_server: Option<crate::dns::DnsServer>,
+    /// État du client DHCP de chaque interface. Les baux obtenus survivent à
+    /// `reset_runtime` (l'adresse reste configurée sur l'interface).
+    pub dhcp_clients: BTreeMap<IfaceId, crate::dhcp::ClientState>,
+    /// La passerelle actuelle a été reçue par DHCP.
+    pub gateway_learned: bool,
+    /// Serveur DNS reçu par DHCP.
+    pub dns_learned: Option<Ipv4Addr>,
+    dhcp_timers: BTreeMap<IfaceId, TimerId>,
+    dhcp_trace: BTreeMap<IfaceId, TraceId>,
+    dns_cache: BTreeMap<String, (Ipv4Addr, SimTime)>,
+    dns_pending: BTreeMap<u16, DnsPending>,
+    next_xid: u32,
+    next_dns_id: u16,
     arp_waits: BTreeMap<Ipv4Addr, ArpWait>,
     pending: Vec<Pending>,
     pings: BTreeMap<u16, PingSession>,
@@ -150,6 +189,20 @@ impl IpNode {
             static_arp: BTreeMap::new(),
             services: Vec::new(),
             acl: Acl::default(),
+            dhcp_ifaces: BTreeSet::new(),
+            dhcp_relay: BTreeMap::new(),
+            dhcp_server: None,
+            dns: None,
+            dns_server: None,
+            dhcp_clients: BTreeMap::new(),
+            gateway_learned: false,
+            dns_learned: None,
+            dhcp_timers: BTreeMap::new(),
+            dhcp_trace: BTreeMap::new(),
+            dns_cache: BTreeMap::new(),
+            dns_pending: BTreeMap::new(),
+            next_xid: 0x1000,
+            next_dns_id: 1,
             arp_waits: BTreeMap::new(),
             pending: Vec::new(),
             pings: BTreeMap::new(),
@@ -182,6 +235,22 @@ impl IpNode {
         self.udp_pending.clear();
         self.timers.clear();
         self.acl.reset_tracking();
+        // Échanges DHCP en cours : oubliés ; adresses obtenues : conservées.
+        self.dhcp_clients
+            .retain(|_, st| matches!(st, crate::dhcp::ClientState::Bound(_)));
+        self.dhcp_timers.clear();
+        self.dhcp_trace.clear();
+        if let Some(srv) = &mut self.dhcp_server {
+            srv.forget_offers();
+        }
+        self.dns_cache.clear();
+        self.dns_pending.clear();
+    }
+
+    /// Serveur DNS utilisé pour résoudre les noms : celui configuré, sinon
+    /// celui reçu par DHCP.
+    pub fn effective_dns(&self) -> Option<Ipv4Addr> {
+        self.dns.or(self.dns_learned)
     }
 
     /// Routes actives de l'équipement (connectées, statiques, par défaut).
@@ -192,11 +261,12 @@ impl IpNode {
         route::build_routes(ifaces, &self.static_routes, self.gateway)
     }
 
-    fn set_timer(&mut self, out: &mut Effects, after: SimTime, kind: TimerKind) {
+    fn set_timer(&mut self, out: &mut Effects, after: SimTime, kind: TimerKind) -> TimerId {
         let id = TimerId(self.next_timer);
         self.next_timer += 1;
         self.timers.insert(id, kind);
         out.set_timer(after, id);
+        id
     }
 
     // ------------------------------------------------------------------
@@ -225,6 +295,25 @@ impl IpNode {
             }
             Command::Curl { dst, port } => self.start_curl(ctx, out, dst, port),
             Command::SendUdp { dst, port, data } => self.start_udp(ctx, out, dst, port, data),
+            Command::DhcpRenew { iface, fresh } => {
+                let targets: Vec<IfaceId> = match iface {
+                    Some(i) => vec![i],
+                    None => self.dhcp_ifaces.iter().copied().collect(),
+                };
+                for i in targets {
+                    self.dhcp_start(ctx, out, i, fresh);
+                }
+            }
+            Command::DhcpRelease { iface } => {
+                let targets: Vec<IfaceId> = match iface {
+                    Some(i) => vec![i],
+                    None => self.dhcp_ifaces.iter().copied().collect(),
+                };
+                for i in targets {
+                    self.dhcp_release(ctx, out, i);
+                }
+            }
+            Command::Resolve { name, then } => self.start_resolve(ctx, out, name, then),
         }
     }
 
@@ -246,6 +335,13 @@ impl IpNode {
             TimerKind::ArpRetry { target } => self.on_arp_retry(ctx, out, target),
             TimerKind::TcpSyn { key } => self.on_syn_retry(ctx, out, key),
             TimerKind::TcpIdle { key } => self.on_tcp_idle(out, key),
+            TimerKind::DhcpRetry { iface } => {
+                if self.dhcp_timers.get(&iface) == Some(&timer) {
+                    self.dhcp_timers.remove(&iface);
+                    self.dhcp_retry(ctx, out, iface);
+                }
+            }
+            TimerKind::DnsTimeout { id } => self.dns_timeout(ctx, out, id),
             TimerKind::UdpTimeout { port } => {
                 if let Some(p) = self.udp_pending.remove(&port) {
                     out.trace(
@@ -625,7 +721,8 @@ impl IpNode {
             );
             return;
         }
-        if ctx.is_local_ip(packet.dst) {
+        // Une diffusion est livrée localement, jamais transférée.
+        if ctx.is_local_ip(packet.dst) || is_broadcast_for(ctx, ingress, packet.dst) {
             self.deliver_local(ctx, out, ingress, packet, tid);
         } else if self.forwarding {
             self.forward(ctx, out, ingress, packet, tid);
@@ -737,6 +834,11 @@ impl IpNode {
                     }
                 }
             }
+            IpPayload::Udp(u)
+                if u.dst_port == crate::dns::PORT && matches!(u.payload, UdpPayload::Dns(_)) =>
+            {
+                self.dns_unreachable(out, u.src_port);
+            }
             IpPayload::Udp(u) => {
                 if let Some(p) = self.udp_pending.remove(&u.src_port) {
                     let outcome = if error == IcmpErrorKind::PortUnreachable {
@@ -818,7 +920,7 @@ impl IpNode {
             payload: IpPayload::Udp(UdpDatagram {
                 src_port: sport,
                 dst_port: port,
-                data,
+                payload: UdpPayload::Text(data),
             }),
         };
         self.emit(ctx, out, route, packet, tid);
@@ -833,6 +935,25 @@ impl IpNode {
         u: &UdpDatagram,
         tid: TraceId,
     ) {
+        match &u.payload {
+            UdpPayload::Dhcp(m) => {
+                self.on_dhcp(ctx, out, ingress, packet, u, m, tid);
+                return;
+            }
+            UdpPayload::Dns(m) if m.response => {
+                self.on_dns_response(ctx, out, packet, m);
+                return;
+            }
+            UdpPayload::Dns(m)
+                if u.dst_port == crate::dns::PORT
+                    && self.dns_server.as_ref().is_some_and(|d| d.enabled) =>
+            {
+                self.on_dns_query(ctx, out, packet, u, m, tid);
+                return;
+            }
+            _ => {}
+        }
+        let broadcast = is_broadcast_for(ctx, ingress, packet.dst);
         // Réponse à une requête que nous avons envoyée ?
         if let Some(p) = self.udp_pending.get(&u.dst_port) {
             if p.dst == packet.src && p.port == u.src_port {
@@ -844,7 +965,7 @@ impl IpNode {
                             dst: p.dst,
                             port: p.port,
                             outcome: UdpOutcome::Reply {
-                                data: u.data.clone(),
+                                data: u.payload.text(),
                             },
                         },
                     );
@@ -858,6 +979,15 @@ impl IpNode {
             .find(|s| s.proto == L4Proto::Udp && s.port == u.dst_port)
             .cloned();
         match svc {
+            // On ne répond jamais à une diffusion qui ne nous concerne pas.
+            None if broadcast => {
+                out.trace(
+                    Some(tid),
+                    TraceKind::Dropped {
+                        reason: DropReason::NotForUs,
+                    },
+                );
+            }
             Some(svc) => {
                 out.trace(
                     Some(tid),
@@ -870,7 +1000,7 @@ impl IpNode {
                 let reply = IpPayload::Udp(UdpDatagram {
                     src_port: u.dst_port,
                     dst_port: u.src_port,
-                    data: svc.respond(&u.data),
+                    payload: UdpPayload::Text(svc.respond(&u.payload.text())),
                 });
                 self.originate(ctx, out, Some(packet.dst), packet.src, reply, tid);
             }
@@ -1363,4 +1493,14 @@ impl IpNode {
             tid,
         );
     }
+}
+
+/// `dst` est-elle une diffusion reçue sur `ingress` : diffusion limitée
+/// (255.255.255.255) ou diffusion dirigée du réseau de l'interface ?
+fn is_broadcast_for(ctx: &Ctx, ingress: IfaceId, dst: Ipv4Addr) -> bool {
+    dst == Ipv4Addr::BROADCAST
+        || ctx
+            .iface(ingress)
+            .and_then(|i| i.ip)
+            .is_some_and(|n| n.prefix() < 31 && n.broadcast() == dst)
 }

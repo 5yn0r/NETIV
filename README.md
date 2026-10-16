@@ -5,7 +5,7 @@ Laboratoire réseau interactif en Rust : **construire, observer, casser, diagnos
 > Ne pas seulement montrer qu'un réseau fonctionne, mais comprendre *pourquoi* il fonctionne
 > et pourquoi il tombe en panne.
 
-Version **0.3** (phases 0 à 8, moteur optimisé, interface web flexible) — Linux.
+Version **0.4** (phases 0 à 8, éditeur de réseau, DHCP et DNS) — Linux.
 
 **Documentation : [docs/](docs/README.md)** — [guide utilisateur](docs/guide-utilisateur.md) ·
 [référence des commandes](docs/reference-commandes.md) · [format des topologies](docs/format-topologie.md) ·
@@ -68,9 +68,9 @@ netiv bench                                   # mesures de performance reproduct
 
 | Phase | Fonctions | Commandes principales |
 |---|---|---|
-| Moteur | ARP, ICMP, routage, switch + **VLAN** (access/trunk), **UDP**, **TCP minimal** + service HTTP simulé, **pare-feu/ACL** à état | `ping`, `curl`, `udp`, `port`, `service`, `acl`, `trace`, `inspect`, `explain` |
-| 4 · Chaos & dépannage | 17 pannes réversibles (L1/L2/L3/services), diagnostic de cause racine, indices à 4 niveaux | `chaos start`, `diagnose`, `hint`, `baseline` |
-| 5 · Éducation | 15 défis, scoring (diagnostic 40 + correction 40 + temps 20 − indices), XP, niveaux, 6 badges, parcours, mode enseignant | `challenge …`, `answer`, `dashboard`, `badges`, `learn`, `course` |
+| Moteur | ARP, ICMP, routage, switch + **VLAN** (access/trunk), **UDP**, **TCP minimal** + service HTTP simulé, **pare-feu/ACL** à état, **DHCP** (relais compris), **DNS** | `ping`, `curl`, `udp`, `port`, `service`, `acl`, `dhcp`, `dns`, `nslookup`, `trace`, `inspect`, `explain` |
+| 4 · Chaos & dépannage | 21 pannes réversibles (L1/L2/L3/services), diagnostic de cause racine, indices à 4 niveaux | `chaos start`, `diagnose`, `hint`, `baseline` |
+| 5 · Éducation | 18 défis, scoring (diagnostic 40 + correction 40 + temps 20 − indices), XP, niveaux, 6 badges, parcours, mode enseignant | `challenge …`, `answer`, `dashboard`, `badges`, `learn`, `course` |
 | 6 · Sécurité | analyseur (SEC-001…011), forensique sur captures `.nlv`, 3 cyber ranges | `security analyze`, `capture save`, `forensic analyze`, `range …` |
 | 7 · Intelligence | tuteur scripté, générateurs de topologies et de défis auto-validés, what-if, score de santé, docs | `tutor`, `topology generate`, `challenge generate`, `what-if`, `health`, `docs` |
 | 8 · Écosystème (local) | labs partageables `.netiv`, classement local, API HTTP, interface web | `lab list/open/export`, `leaderboard`, `netiv serve` |
@@ -84,6 +84,10 @@ Exemples : `examples/*.yaml` ; labs prêts à l'emploi dans `labs/*.netiv`.
 `netiv serve` démarre un serveur **local uniquement** (127.0.0.1) : schéma de la topologie,
 console, **Packet Journey animé** (◀ ▶ lecture), tables par équipement, trace filtrable,
 santé / sécurité / what-if / documentation, défis avec minuteur et indices.
+
+**Mode Construire** (`B`) : dessiner un réseau à la souris (palette, câbles, réglages de chaque
+équipement, DHCP et DNS compris), l'adresser automatiquement, annuler/rétablir, télécharger en
+`.netiv` — voir le [guide](docs/guide-utilisateur.md#8-construire-un-réseau-dans-le-navigateur).
 
 L'affichage s'adapte à chacun : zones **redimensionnables** (glisser leur bord, ou au clavier),
 catalogue / détails / console **repliables** (`[` `]` `` ` ``), mode « schéma seul » (`F`),
@@ -105,7 +109,7 @@ session de 15 s à 0,16 s. Détails et méthode : [docs/performance.md](docs/per
 
 ### Hors périmètre (assumé)
 
-DHCP/DNS, STP, TUI, export PDF natif (Markdown/JSON/YAML ; PDF via `pandoc`), comptes et
+STP, TUI, export PDF natif (Markdown/JSON/YAML ; PDF via `pandoc`), comptes et
 marketplace en ligne, mode « réseau réel ».
 
 ## Format de topologie

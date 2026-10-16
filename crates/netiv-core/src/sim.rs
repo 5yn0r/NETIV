@@ -661,6 +661,225 @@ impl Simulation {
         Ok(())
     }
 
+    // ------------------------------------------------------------------
+    // DHCP et DNS
+    // ------------------------------------------------------------------
+
+    fn iface_label(&self, device: DeviceId, iface: IfaceId) -> Result<String, NetivError> {
+        let dev = self.dev(device)?;
+        let i = dev
+            .iface(iface)
+            .ok_or_else(|| NetivError::UnknownInterface {
+                device: dev.name.clone(),
+                iface: format!("#{}", iface.0),
+            })?;
+        Ok(format!("{}/{}", dev.name, i.name))
+    }
+
+    /// Configure une interface par DHCP (`true`) ou à la main (`false`).
+    /// Passer en DHCP retire l'adresse actuelle : il faut ensuite la demander
+    /// (`dhcp_renew`, ou `restart_dhcp`).
+    pub fn set_dhcp_client(
+        &mut self,
+        device: DeviceId,
+        iface: IfaceId,
+        on: bool,
+    ) -> Result<(), NetivError> {
+        let label = self.iface_label(device, iface)?;
+        let node = self.ip_node_mut(device)?;
+        if on {
+            node.dhcp_ifaces.insert(iface);
+        } else {
+            node.dhcp_ifaces.remove(&iface);
+            node.dhcp_clients.remove(&iface);
+        }
+        if on {
+            if let Some(i) = self.dev_mut(device)?.ifaces.get_mut(iface.0 as usize) {
+                i.ip = None;
+            }
+        }
+        let text = if on {
+            format!("{label} : adresse obtenue par DHCP")
+        } else {
+            format!("{label} : adresse fixe (DHCP désactivé)")
+        };
+        self.config_changed(device, text);
+        Ok(())
+    }
+
+    /// Installe (ou remplace) les plages du serveur DHCP d'un équipement ;
+    /// les baux déjà attribués sont conservés. Liste vide : plus de serveur.
+    pub fn set_dhcp_pools(
+        &mut self,
+        device: DeviceId,
+        pools: Vec<crate::dhcp::DhcpPool>,
+    ) -> Result<(), NetivError> {
+        let name = self.dev(device)?.name.clone();
+        let node = self.ip_node_mut(device)?;
+        let text = if pools.is_empty() {
+            node.dhcp_server = None;
+            format!("{name} : serveur DHCP supprimé")
+        } else {
+            let list = pools
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ; ");
+            match &mut node.dhcp_server {
+                Some(srv) => srv.pools = pools,
+                None => node.dhcp_server = Some(crate::dhcp::DhcpServer::new(pools)),
+            }
+            format!("{name} : serveur DHCP, plages {list}")
+        };
+        self.config_changed(device, text);
+        Ok(())
+    }
+
+    /// Démarre ou arrête le serveur DHCP d'un équipement.
+    pub fn set_dhcp_enabled(&mut self, device: DeviceId, on: bool) -> Result<(), NetivError> {
+        let name = self.dev(device)?.name.clone();
+        let node = self.ip_node_mut(device)?;
+        let Some(srv) = node.dhcp_server.as_mut() else {
+            return Err(NetivError::InvalidConfig(format!(
+                "{name} n'a pas de serveur DHCP"
+            )));
+        };
+        srv.enabled = on;
+        let text = format!(
+            "{name} : serveur DHCP {}",
+            if on { "démarré" } else { "arrêté" }
+        );
+        self.config_changed(device, text);
+        Ok(())
+    }
+
+    /// Fait d'une interface de routeur un relais DHCP vers `server` (`None` : plus de relais).
+    pub fn set_dhcp_relay(
+        &mut self,
+        device: DeviceId,
+        iface: IfaceId,
+        server: Option<Ipv4Addr>,
+    ) -> Result<(), NetivError> {
+        let label = self.iface_label(device, iface)?;
+        let node = self.ip_node_mut(device)?;
+        let text = match server {
+            Some(s) => {
+                node.dhcp_relay.insert(iface, s);
+                format!("{label} : relais DHCP vers {s}")
+            }
+            None => {
+                node.dhcp_relay.remove(&iface);
+                format!("{label} : relais DHCP supprimé")
+            }
+        };
+        self.config_changed(device, text);
+        Ok(())
+    }
+
+    /// Serveur DNS utilisé par un équipement (`None` : aucun, ou celui reçu par DHCP).
+    pub fn set_dns(
+        &mut self,
+        device: DeviceId,
+        server: Option<Ipv4Addr>,
+    ) -> Result<(), NetivError> {
+        let name = self.dev(device)?.name.clone();
+        self.ip_node_mut(device)?.dns = server;
+        let text = match server {
+            Some(s) => format!("{name} : serveur DNS {s}"),
+            None => format!("{name} : serveur DNS supprimé"),
+        };
+        self.config_changed(device, text);
+        Ok(())
+    }
+
+    /// Ajoute (ou remplace) un enregistrement dans la zone du serveur DNS
+    /// d'un équipement, créé au besoin. `ip = None` : supprime le nom.
+    pub fn set_dns_record(
+        &mut self,
+        device: DeviceId,
+        name: &str,
+        ip: Option<Ipv4Addr>,
+    ) -> Result<(), NetivError> {
+        if !crate::dns::is_valid_name(name) {
+            return Err(NetivError::InvalidConfig(format!(
+                "nom de domaine invalide : « {name} »"
+            )));
+        }
+        let dname = self.dev(device)?.name.clone();
+        let key = crate::dns::normalize(name);
+        let node = self.ip_node_mut(device)?;
+        let srv = node
+            .dns_server
+            .get_or_insert_with(|| crate::dns::DnsServer::new(Default::default()));
+        let text = match ip {
+            Some(a) => {
+                srv.zone.insert(key.clone(), a);
+                format!("{dname} : DNS {key} = {a}")
+            }
+            None => {
+                srv.zone.remove(&key);
+                format!("{dname} : DNS {key} supprimé")
+            }
+        };
+        self.config_changed(device, text);
+        Ok(())
+    }
+
+    /// Démarre ou arrête le serveur DNS d'un équipement (créé vide au besoin).
+    pub fn set_dns_enabled(&mut self, device: DeviceId, on: bool) -> Result<(), NetivError> {
+        let name = self.dev(device)?.name.clone();
+        let node = self.ip_node_mut(device)?;
+        node.dns_server
+            .get_or_insert_with(|| crate::dns::DnsServer::new(Default::default()))
+            .enabled = on;
+        let text = format!(
+            "{name} : serveur DNS {}",
+            if on { "démarré" } else { "arrêté" }
+        );
+        self.config_changed(device, text);
+        Ok(())
+    }
+
+    /// Supprime le serveur DNS d'un équipement.
+    pub fn remove_dns_server(&mut self, device: DeviceId) -> Result<(), NetivError> {
+        let name = self.dev(device)?.name.clone();
+        self.ip_node_mut(device)?.dns_server = None;
+        self.config_changed(device, format!("{name} : serveur DNS supprimé"));
+        Ok(())
+    }
+
+    /// `true` si au moins une interface du réseau est configurée par DHCP.
+    pub fn has_dhcp_clients(&self) -> bool {
+        self.devices
+            .iter()
+            .any(|d| matches!(&d.behavior, Behavior::Ip(n) if !n.dhcp_ifaces.is_empty()))
+    }
+
+    /// Redémarre tous les clients DHCP (comme au démarrage des machines) :
+    /// chacun oublie son adresse et en redemande une. Exécute la simulation
+    /// jusqu'à ce que tout soit terminé ; retourne le nombre d'événements.
+    pub fn restart_dhcp(&mut self) -> Result<u64, NetivError> {
+        let clients: Vec<DeviceId> = self
+            .devices
+            .iter()
+            .filter(|d| matches!(&d.behavior, Behavior::Ip(n) if !n.dhcp_ifaces.is_empty()))
+            .map(|d| d.id)
+            .collect();
+        if clients.is_empty() {
+            return Ok(0);
+        }
+        for d in clients {
+            self.command(
+                d,
+                Command::DhcpRenew {
+                    iface: None,
+                    fresh: true,
+                },
+            )?;
+        }
+        self.run_until_idle()
+    }
+
     /// Active ou désactive le transfert de paquets d'un routeur.
     pub fn set_forwarding(&mut self, device: DeviceId, on: bool) -> Result<(), NetivError> {
         self.ip_node_mut(device)?.forwarding = on;
@@ -1028,6 +1247,15 @@ impl Simulation {
                     let _ = self.schedule_in(after, Event::Timer { device, timer });
                 }
                 Effect::Send { iface, frame } => self.transmit(device, iface, frame, cause),
+                Effect::ConfigureIface { iface, ip } => {
+                    if let Some(i) = self
+                        .devices
+                        .get_mut(device.0 as usize)
+                        .and_then(|d| d.ifaces.get_mut(iface.0 as usize))
+                    {
+                        i.ip = ip;
+                    }
+                }
             }
         }
     }
@@ -1117,6 +1345,19 @@ impl fmt::Display for Command {
             Command::Ping { dst, count } => write!(f, "ping {dst} ({count} requête(s))"),
             Command::Curl { dst, port } => write!(f, "curl {dst}:{port}"),
             Command::SendUdp { dst, port, data } => write!(f, "udp {dst}:{port} « {data} »"),
+            Command::DhcpRenew { fresh: true, .. } => f.write_str("DHCP : démarrage"),
+            Command::DhcpRenew { .. } => f.write_str("DHCP : renouvellement"),
+            Command::DhcpRelease { .. } => f.write_str("DHCP : libération de l'adresse"),
+            Command::Resolve { name, then } => match then {
+                crate::dns::AfterResolve::Nothing => write!(f, "nslookup {name}"),
+                crate::dns::AfterResolve::Ping { count } => {
+                    write!(f, "ping {name} ({count} requête(s))")
+                }
+                crate::dns::AfterResolve::Curl { port } => write!(f, "curl {name}:{port}"),
+                crate::dns::AfterResolve::Udp { port, data } => {
+                    write!(f, "udp {name}:{port} « {data} »")
+                }
+            },
         }
     }
 }

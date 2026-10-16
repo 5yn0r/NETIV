@@ -15,6 +15,38 @@ use netiv_core::{DeviceId, NetivError, SimRng, Simulation};
 use netiv_diagnostics::{CauseKind, Layer};
 
 pub use catalog::{Template, catalog};
+
+/// Panne qui touche le DHCP : elle n'a d'effet que lorsque le client
+/// redemande son adresse (voir [`restart_client`]).
+pub fn is_dhcp_kind(kind: CauseKind) -> bool {
+    matches!(
+        kind,
+        CauseKind::DhcpServerDown
+            | CauseKind::DhcpRelayMissing
+            | CauseKind::DhcpPoolExhausted
+            | CauseKind::RogueDhcp
+    )
+}
+
+/// Le client DHCP `src` redémarre : il oublie son adresse et en redemande
+/// une (sans effet si `src` n'utilise pas DHCP).
+pub fn restart_client(sim: &mut Simulation, src: DeviceId) -> Result<(), NetivError> {
+    let uses_dhcp = matches!(
+        sim.device(src).map(|d| &d.behavior),
+        Some(netiv_core::device::Behavior::Ip(n)) if !n.dhcp_ifaces.is_empty()
+    );
+    if uses_dhcp {
+        sim.command(
+            src,
+            netiv_core::Command::DhcpRenew {
+                iface: None,
+                fresh: true,
+            },
+        )?;
+        sim.run_until_idle()?;
+    }
+    Ok(())
+}
 pub use path::PathInfo;
 
 /// Difficulté d'un diagnostic.
@@ -188,6 +220,9 @@ impl Chaos {
                 continue;
             };
             let id = sim.inject_fault(fault, visible)?;
+            if is_dhcp_kind(t.kind) {
+                restart_client(sim, self.flow.src)?;
+            }
             let description = sim
                 .faults()
                 .iter()
@@ -210,10 +245,16 @@ impl Chaos {
     /// Répare toutes les pannes injectées et en vigueur. Retourne leur nombre.
     pub fn undo_all(&mut self, sim: &mut Simulation, visible: bool) -> usize {
         let mut n = 0;
+        let mut dhcp = false;
         for inj in self.injected.iter().rev() {
             if sim.repair_fault(inj.fault_id, visible).is_ok() {
                 n += 1;
+                dhcp |= is_dhcp_kind(inj.kind);
             }
+        }
+        // Le client redemande une adresse au serveur réparé.
+        if dhcp {
+            let _ = restart_client(sim, self.flow.src);
         }
         n
     }

@@ -161,6 +161,7 @@ impl Session {
         let now = (self.clock)();
         let (run, sim) = RangeRun::start(scenario.clone(), now).map_err(CliError)?;
         self.sim = Some(sim);
+        self.layout = Layout::new();
         self.name = scenario.id.clone();
         self.chaos = None;
         self.baseline = None;
@@ -204,7 +205,7 @@ impl Session {
         )?;
         writeln!(
             out,
-            "Comportements : port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials."
+            "Comportements : port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials, rogue-dhcp."
         )?;
         Ok(())
     }
@@ -254,7 +255,7 @@ impl Session {
     ) -> Result<(), CliError> {
         if parse_behavior(behavior).is_none() {
             return err(format!(
-                "comportement inconnu : « {behavior} » (port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials)"
+                "comportement inconnu : « {behavior} » (port-scan, host-sweep, lateral-movement, beaconing, arp-spoofing, repeated-denials, rogue-dhcp)"
             ));
         }
         let Some(run) = self.range_run.as_mut() else {

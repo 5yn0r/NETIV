@@ -64,6 +64,20 @@ pub enum CauseKind {
     ServiceDown,
     /// Paquet bloqué par une règle de filtrage.
     Filtered,
+    /// Serveur DHCP arrêté ou absent.
+    DhcpServerDown,
+    /// Relais DHCP absent ou mal configuré.
+    DhcpRelayMissing,
+    /// Plage DHCP épuisée ou absente pour ce réseau.
+    DhcpPoolExhausted,
+    /// Serveur DHCP pirate (une machine distribue une mauvaise configuration).
+    RogueDhcp,
+    /// Mauvais serveur DNS (ou aucun).
+    DnsWrongServer,
+    /// Serveur DNS arrêté.
+    DnsServerDown,
+    /// Enregistrement DNS erroné ou absent.
+    DnsRecordWrong,
     /// Cause non identifiée.
     Unknown,
 }
@@ -84,9 +98,15 @@ impl CauseKind {
             | CauseKind::WrongRoute
             | CauseKind::RoutingLoop
             | CauseKind::ForwardingDisabled
+            | CauseKind::DhcpServerDown
+            | CauseKind::DhcpRelayMissing
+            | CauseKind::DhcpPoolExhausted
             | CauseKind::Unknown => Layer::L3,
-            CauseKind::ServiceDown => Layer::Services,
-            CauseKind::Filtered => Layer::Security,
+            CauseKind::ServiceDown
+            | CauseKind::DnsWrongServer
+            | CauseKind::DnsServerDown
+            | CauseKind::DnsRecordWrong => Layer::Services,
+            CauseKind::Filtered | CauseKind::RogueDhcp => Layer::Security,
         }
     }
 
@@ -108,6 +128,13 @@ impl CauseKind {
             CauseKind::ForwardingDisabled => "forwarding-disabled",
             CauseKind::ServiceDown => "service-down",
             CauseKind::Filtered => "filtered",
+            CauseKind::DhcpServerDown => "dhcp-server-down",
+            CauseKind::DhcpRelayMissing => "dhcp-relay-missing",
+            CauseKind::DhcpPoolExhausted => "dhcp-pool-exhausted",
+            CauseKind::RogueDhcp => "rogue-dhcp",
+            CauseKind::DnsWrongServer => "dns-wrong-server",
+            CauseKind::DnsServerDown => "dns-server-down",
+            CauseKind::DnsRecordWrong => "dns-record-wrong",
             CauseKind::Unknown => "unknown",
         }
     }
@@ -118,7 +145,7 @@ impl CauseKind {
     }
 
     /// Toutes les causes (sauf `Unknown`).
-    pub const ALL: [CauseKind; 15] = [
+    pub const ALL: [CauseKind; 22] = [
         CauseKind::LinkDown,
         CauseKind::InterfaceDown,
         CauseKind::PacketLoss,
@@ -134,6 +161,13 @@ impl CauseKind {
         CauseKind::ForwardingDisabled,
         CauseKind::ServiceDown,
         CauseKind::Filtered,
+        CauseKind::DhcpServerDown,
+        CauseKind::DhcpRelayMissing,
+        CauseKind::DhcpPoolExhausted,
+        CauseKind::RogueDhcp,
+        CauseKind::DnsWrongServer,
+        CauseKind::DnsServerDown,
+        CauseKind::DnsRecordWrong,
     ];
 
     /// Libellé lisible.
@@ -154,6 +188,13 @@ impl CauseKind {
             CauseKind::ForwardingDisabled => "transfert de paquets désactivé",
             CauseKind::ServiceDown => "service arrêté",
             CauseKind::Filtered => "paquet bloqué par le filtrage",
+            CauseKind::DhcpServerDown => "serveur DHCP arrêté ou absent",
+            CauseKind::DhcpRelayMissing => "relais DHCP absent ou erroné",
+            CauseKind::DhcpPoolExhausted => "plage DHCP épuisée ou absente",
+            CauseKind::RogueDhcp => "serveur DHCP pirate",
+            CauseKind::DnsWrongServer => "mauvais serveur DNS",
+            CauseKind::DnsServerDown => "serveur DNS arrêté",
+            CauseKind::DnsRecordWrong => "enregistrement DNS erroné ou absent",
             CauseKind::Unknown => "cause non identifiée",
         }
     }

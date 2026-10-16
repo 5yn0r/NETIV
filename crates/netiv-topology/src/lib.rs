@@ -9,6 +9,7 @@
 //!   n'empêchent rien : un laboratoire de dépannage contient volontairement
 //!   des réseaux mal configurés.
 
+pub mod autoconf;
 pub mod generate;
 
 use std::collections::BTreeMap;
@@ -82,7 +83,131 @@ pub struct DeviceDef {
     /// Filtrage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acl: Option<AclDef>,
+    /// Serveur DHCP hébergé par l'équipement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dhcp: Option<DhcpDef>,
+    /// Serveur DNS utilisé par l'équipement (sinon : celui reçu par DHCP).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns: Option<String>,
+    /// Serveur DNS hébergé par l'équipement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_server: Option<DnsServerDef>,
+    /// Position sur le schéma de l'interface web (`[x, y]`). Sans effet sur
+    /// la simulation ; voyage avec le lab pour qu'il s'ouvre à l'identique.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pos: Option<[i32; 2]>,
 }
+
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// Serveur DHCP d'un équipement.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DhcpDef {
+    /// Le service tourne-t-il ? (oui par défaut)
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub enabled: bool,
+    /// Plages distribuées.
+    #[serde(default)]
+    pub pools: Vec<DhcpPoolDef>,
+}
+
+/// Une plage DHCP.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DhcpPoolDef {
+    /// Réseau servi (`192.168.1.0/24`).
+    pub network: String,
+    /// Adresses distribuées : `192.168.1.100-192.168.1.199`.
+    pub range: String,
+    /// Passerelle annoncée.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway: Option<String>,
+    /// Serveur DNS annoncé.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns: Option<String>,
+    /// Durée des baux en secondes (24 h par défaut).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_s: Option<u32>,
+}
+
+/// Serveur DNS d'un équipement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DnsServerDef {
+    /// Le service tourne-t-il ? (oui par défaut)
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub enabled: bool,
+    /// Enregistrements A : nom → adresse.
+    #[serde(default)]
+    pub records: BTreeMap<String, String>,
+}
+
+/// Lit une plage DHCP.
+pub fn pool_from_def(p: &DhcpPoolDef) -> Result<netiv_core::dhcp::DhcpPool, String> {
+    let network: Ipv4Net = p
+        .network
+        .parse()
+        .map_err(|e: netiv_core::NetivError| e.to_string())?;
+    let (a, b) = p
+        .range
+        .split_once('-')
+        .ok_or_else(|| format!("plage « {} » : attendu première-dernière", p.range))?;
+    let first: Ipv4Addr = a
+        .trim()
+        .parse()
+        .map_err(|_| format!("plage : adresse invalide « {a} »"))?;
+    let last: Ipv4Addr = b
+        .trim()
+        .parse()
+        .map_err(|_| format!("plage : adresse invalide « {b} »"))?;
+    if u32::from(first) > u32::from(last) {
+        return Err(format!(
+            "plage « {} » : la première adresse dépasse la dernière",
+            p.range
+        ));
+    }
+    if !network.contains(first) || !network.contains(last) {
+        return Err(format!(
+            "plage « {} » : hors du réseau {}",
+            p.range,
+            network.trunc()
+        ));
+    }
+    let opt = |v: &Option<String>, what: &str| -> Result<Option<Ipv4Addr>, String> {
+        v.as_deref()
+            .map(|x| x.parse().map_err(|_| format!("{what} invalide : « {x} »")))
+            .transpose()
+    };
+    Ok(netiv_core::dhcp::DhcpPool {
+        network: network.trunc(),
+        first,
+        last,
+        gateway: opt(&p.gateway, "passerelle")?,
+        dns: opt(&p.dns, "DNS")?,
+        lease_s: p.lease_s.unwrap_or(netiv_core::dhcp::DEFAULT_LEASE_S),
+    })
+}
+
+/// Écrit une plage DHCP.
+pub fn pool_to_def(p: &netiv_core::dhcp::DhcpPool) -> DhcpPoolDef {
+    DhcpPoolDef {
+        network: p.network.trunc().to_string(),
+        range: p.range_text(),
+        gateway: p.gateway.map(|g| g.to_string()),
+        dns: p.dns.map(|d| d.to_string()),
+        lease_s: (p.lease_s != netiv_core::dhcp::DEFAULT_LEASE_S).then_some(p.lease_s),
+    }
+}
+
+/// Positions des équipements sur le schéma, par nom.
+pub type Layout = BTreeMap<String, [i32; 2]>;
 
 /// Une interface.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -105,6 +230,9 @@ pub struct InterfaceDef {
     /// Switch : VLAN natif d'un port trunk (1 par défaut).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_vlan: Option<u16>,
+    /// Routeur : relais DHCP vers ce serveur (« ip helper-address »).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dhcp_relay: Option<String>,
 }
 
 /// Une entrée ARP statique.
@@ -227,6 +355,8 @@ pub struct Loaded {
     pub sim: Simulation,
     /// Problèmes de configuration non bloquants.
     pub warnings: Vec<String>,
+    /// Positions sur le schéma déclarées dans le fichier.
+    pub layout: Layout,
 }
 
 /// Charge une topologie depuis un texte YAML.
@@ -281,7 +411,13 @@ pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
             }
         }
         for i in &d.interfaces {
-            let ip = match i.ip.as_deref().map(str::parse::<Ipv4Net>) {
+            let dhcp_client = i.ip.as_deref() == Some(autoconf::DHCP);
+            let ip = match i
+                .ip
+                .as_deref()
+                .filter(|_| !dhcp_client)
+                .map(str::parse::<Ipv4Net>)
+            {
                 None => None,
                 Some(Ok(n)) => Some(n),
                 Some(Err(e)) => {
@@ -291,6 +427,33 @@ pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
             };
             match sim.add_interface(id, &i.name, ip) {
                 Ok(iface) => {
+                    if dhcp_client {
+                        if kind == DeviceKind::Switch {
+                            errors.push(format!(
+                                "{ctx}, interface « {} » : un port de switch n'a pas d'adresse",
+                                i.name
+                            ));
+                        } else if let Err(e) = sim.set_dhcp_client(id, iface, true) {
+                            errors.push(format!("{ctx} : {e}"));
+                        }
+                    }
+                    if let Some(relay) = &i.dhcp_relay {
+                        match relay.parse::<Ipv4Addr>() {
+                            Ok(server) if matches!(kind, DeviceKind::Router | DeviceKind::Firewall) => {
+                                if let Err(e) = sim.set_dhcp_relay(id, iface, Some(server)) {
+                                    errors.push(format!("{ctx} : {e}"));
+                                }
+                            }
+                            Ok(_) => errors.push(format!(
+                                "{ctx}, interface « {} » : seul un routeur ou un pare-feu relaie le DHCP",
+                                i.name
+                            )),
+                            Err(_) => errors.push(format!(
+                                "{ctx}, interface « {} » : relais DHCP invalide « {relay} »",
+                                i.name
+                            )),
+                        }
+                    }
                     if i.management {
                         if kind == DeviceKind::Switch {
                             errors.push(format!(
@@ -309,6 +472,7 @@ pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
         apply_services(&mut sim, id, d, kind, &ctx, &mut errors);
         apply_acl(&mut sim, id, d, kind, &ctx, &mut errors);
         apply_static_arp(&mut sim, id, d, kind, &ctx, &mut errors);
+        apply_dhcp_dns(&mut sim, id, d, kind, &ctx, &mut errors);
         if let Some(gw) = &d.gateway {
             match gw.parse::<Ipv4Addr>() {
                 Ok(g) if kind != DeviceKind::Switch => {
@@ -367,12 +531,21 @@ pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
         return Err(TopologyErrors { errors });
     }
 
-    let warnings = lint(&sim);
+    let mut warnings = lint(&sim);
     sim.clear_trace();
+    // Les clients DHCP demandent leur adresse, comme au démarrage des
+    // machines : ces échanges sont les premières transactions de la trace.
+    if sim.has_dhcp_clients() {
+        sim.restart_dhcp().map_err(|e| TopologyErrors {
+            errors: vec![format!("démarrage DHCP : {e}")],
+        })?;
+        warnings.extend(dhcp_warnings(&sim));
+    }
     Ok(Loaded {
         name: def.network.name.clone(),
         sim,
         warnings,
+        layout: layout_of(def),
     })
 }
 
@@ -478,6 +651,94 @@ fn apply_static_arp(
             (_, Err(e)) => errors.push(format!("{ctx}, arp : {e}")),
         }
     }
+}
+
+fn apply_dhcp_dns(
+    sim: &mut Simulation,
+    id: DeviceId,
+    d: &DeviceDef,
+    kind: DeviceKind,
+    ctx: &str,
+    errors: &mut Vec<String>,
+) {
+    if kind == DeviceKind::Switch {
+        if d.dhcp.is_some() || d.dns.is_some() || d.dns_server.is_some() {
+            errors.push(format!("{ctx} : un switch n'a ni DHCP ni DNS"));
+        }
+        return;
+    }
+    if let Some(dhcp) = &d.dhcp {
+        let mut pools = Vec::new();
+        for p in &dhcp.pools {
+            match pool_from_def(p) {
+                Ok(pool) => pools.push(pool),
+                Err(e) => errors.push(format!("{ctx}, DHCP : {e}")),
+            }
+        }
+        if pools.is_empty() && dhcp.pools.is_empty() {
+            errors.push(format!("{ctx}, DHCP : aucune plage (« pools »)"));
+        } else if !pools.is_empty() {
+            let r = sim.set_dhcp_pools(id, pools).and_then(|()| {
+                if dhcp.enabled {
+                    Ok(())
+                } else {
+                    sim.set_dhcp_enabled(id, false)
+                }
+            });
+            if let Err(e) = r {
+                errors.push(format!("{ctx} : {e}"));
+            }
+        }
+    }
+    if let Some(dns) = &d.dns {
+        match dns.parse::<Ipv4Addr>() {
+            Ok(a) => {
+                if let Err(e) = sim.set_dns(id, Some(a)) {
+                    errors.push(format!("{ctx} : {e}"));
+                }
+            }
+            Err(_) => errors.push(format!("{ctx} : serveur DNS invalide « {dns} »")),
+        }
+    }
+    if let Some(srv) = &d.dns_server {
+        if let Err(e) = sim.set_dns_enabled(id, srv.enabled) {
+            errors.push(format!("{ctx} : {e}"));
+        }
+        for (name, ip) in &srv.records {
+            match ip.parse::<Ipv4Addr>() {
+                Ok(a) => {
+                    if let Err(e) = sim.set_dns_record(id, name, Some(a)) {
+                        errors.push(format!("{ctx}, DNS : {e}"));
+                    }
+                }
+                Err(_) => errors.push(format!(
+                    "{ctx}, DNS : adresse invalide pour {name} « {ip} »"
+                )),
+            }
+        }
+    }
+}
+
+/// Clients DHCP restés sans adresse après le démarrage.
+fn dhcp_warnings(sim: &Simulation) -> Vec<String> {
+    use netiv_core::device::Behavior;
+    let mut out = Vec::new();
+    for d in sim.devices() {
+        let Behavior::Ip(n) = &d.behavior else {
+            continue;
+        };
+        for i in &n.dhcp_ifaces {
+            if let Some(iface) = d.iface(*i) {
+                if iface.ip.is_none() && iface.link.is_some() {
+                    out.push(format!(
+                        "{}/{} : aucune adresse obtenue par DHCP (aucun serveur n'a répondu)",
+                        d.name, iface.name
+                    ));
+                }
+            }
+        }
+    }
+    out
 }
 
 fn parse_proto(s: &str) -> Option<L4Proto> {
@@ -838,6 +1099,24 @@ fn end_name(sim: &Simulation, (d, i): (DeviceId, IfaceId)) -> String {
 /// Version courante du format `.netiv`.
 pub const NETIV_FORMAT_VERSION: u32 = 1;
 
+/// Positions déclarées dans une topologie.
+pub fn layout_of(def: &TopologyDef) -> Layout {
+    def.devices
+        .iter()
+        .filter_map(|d| d.pos.map(|p| (d.name.clone(), p)))
+        .collect()
+}
+
+/// Reporte des positions sur les équipements d'une topologie (ceux qui
+/// n'en ont pas gardent `None`).
+pub fn apply_layout(def: &mut TopologyDef, layout: &Layout) {
+    for d in &mut def.devices {
+        if let Some(p) = layout.get(&d.name) {
+            d.pos = Some(*p);
+        }
+    }
+}
+
 /// Décrit l'état **courant** d'une simulation (y compris les pannes déjà
 /// injectées) sous forme de topologie. Les équipements et interfaces sont
 /// émis dans l'ordre de création : recharger le résultat redonne les mêmes
@@ -863,19 +1142,32 @@ pub fn export(sim: &Simulation, name: &str) -> TopologyDef {
                         }
                         None => (None, None, None),
                     };
+                    let (dhcp, relay) = match &d.behavior {
+                        Behavior::Ip(n) => (n.dhcp_ifaces.contains(&i.id), n.dhcp_relay.get(&i.id)),
+                        Behavior::Switch(_) => (false, None),
+                    };
                     InterfaceDef {
                         name: i.name.clone(),
-                        ip: i.ip.map(|n| n.to_string()),
+                        // Une interface DHCP s'écrit « dhcp », pas avec l'adresse obtenue.
+                        ip: if dhcp {
+                            Some(autoconf::DHCP.to_string())
+                        } else {
+                            i.ip.map(|n| n.to_string())
+                        },
                         management: i.management,
                         vlan,
                         trunk,
                         native_vlan,
+                        dhcp_relay: relay.map(ToString::to_string),
                     }
                 })
                 .collect();
             let (gateway, routes, services, acl) = match &d.behavior {
                 Behavior::Ip(n) => (
-                    n.gateway.map(|g| g.to_string()),
+                    // Une passerelle reçue par DHCP n'est pas de la configuration.
+                    n.gateway
+                        .filter(|_| !n.gateway_learned)
+                        .map(|g| g.to_string()),
                     n.static_routes
                         .iter()
                         .map(|r| RouteDef {
@@ -906,6 +1198,24 @@ pub fn export(sim: &Simulation, name: &str) -> TopologyDef {
                     .collect(),
                 Behavior::Switch(_) => Vec::new(),
             };
+            let (dhcp, dns, dns_server) = match &d.behavior {
+                Behavior::Ip(n) => (
+                    n.dhcp_server.as_ref().map(|srv| DhcpDef {
+                        enabled: srv.enabled,
+                        pools: srv.pools.iter().map(pool_to_def).collect(),
+                    }),
+                    n.dns.map(|a| a.to_string()),
+                    n.dns_server.as_ref().map(|srv| DnsServerDef {
+                        enabled: srv.enabled,
+                        records: srv
+                            .zone
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.to_string()))
+                            .collect(),
+                    }),
+                ),
+                Behavior::Switch(_) => (None, None, None),
+            };
             DeviceDef {
                 name: d.name.clone(),
                 kind: d.kind.to_string(),
@@ -917,6 +1227,10 @@ pub fn export(sim: &Simulation, name: &str) -> TopologyDef {
                 services,
                 arp,
                 acl,
+                dhcp,
+                dns,
+                dns_server,
+                pos: None,
             }
         })
         .collect();
