@@ -497,6 +497,7 @@ async fn create_lab(State(st): State<AppState>, Json(body): Json<CreateLab>) -> 
             )));
         }
         let def = TopologyDef {
+            schema_version: netiv_topology::TOPOLOGY_SCHEMA_VERSION,
             network: NetworkDef {
                 name: name.to_string(),
                 seed: 1,

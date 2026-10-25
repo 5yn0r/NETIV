@@ -6,6 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+default = ["parallel"]
+# Exécution des sondes sur plusieurs threads. Sans cette feature (cible
+# WebAssembly), tout s'exécute en séquentiel, avec des résultats identiques.
+parallel = []
+
 [dependencies]
 netiv-core = { workspace = true }
 serde = { workspace = true }

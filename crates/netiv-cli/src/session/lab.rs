@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use netiv_education::profile::leaderboard;
+use netiv_education::profile::{LeaderEntry, rank};
 use netiv_topology::{Bundle, BundleMeta};
 
 use super::*;
@@ -20,7 +20,7 @@ impl Session {
                 let path = EXTENSIONS
                     .iter()
                     .map(|e| dir.join(format!("{name}.{e}")))
-                    .find(|p| p.is_file())
+                    .find(|p| self.storage.is_file(p))
                     .ok_or_else(|| {
                         CliError(format!("lab inconnu : « {name} » (voir « lab list »)"))
                     })?;
@@ -57,15 +57,14 @@ impl Session {
 
     fn lab_list(&self, out: &mut dyn Write) -> Result<(), CliError> {
         self.fs_allowed()?;
-        let entries = std::fs::read_dir(&self.labs_dir).map_err(|e| {
+        let entries = self.storage.list(&self.labs_dir).map_err(|e| {
             CliError(format!(
                 "bibliothèque « {} » inaccessible : {e}",
                 self.labs_dir.display()
             ))
         })?;
         let mut rows: Vec<(String, String, String)> = Vec::new();
-        for e in entries.flatten() {
-            let path = e.path();
+        for path in entries {
             let ext = path.extension().and_then(|x| x.to_str()).unwrap_or("");
             if !EXTENSIONS.contains(&ext) {
                 continue;
@@ -75,7 +74,9 @@ impl Session {
                 .and_then(|x| x.to_str())
                 .unwrap_or("?")
                 .to_string();
-            let info = std::fs::read_to_string(&path)
+            let info = self
+                .storage
+                .read(&path)
                 .ok()
                 .and_then(|t| Bundle::from_yaml(&t).ok())
                 .map_or_else(
@@ -108,13 +109,38 @@ impl Session {
         let Some(dir) = self.profile_path.as_ref().and_then(|p| p.parent()) else {
             return err("aucun dossier de profils : lance « netiv run --profile-dir <dossier> »");
         };
-        write_leaderboard(dir, out)
+        let (board, skipped) = self.leaderboard(dir)?;
+        write_leaderboard(dir, &board, skipped, out)
+    }
+
+    /// Classement des profils `*.json` d'un dossier du stockage.
+    pub(super) fn leaderboard(&self, dir: &Path) -> Result<(Vec<LeaderEntry>, usize), CliError> {
+        let entries = self.storage.list(dir).map_err(|e| ProfileError::Io {
+            path: dir.display().to_string(),
+            reason: e.to_string(),
+        })?;
+        let profiles = entries.into_iter().filter_map(|path| {
+            if path.extension().and_then(|x| x.to_str()) != Some("json") {
+                return None;
+            }
+            let stem = path
+                .file_stem()
+                .and_then(|x| x.to_str())
+                .unwrap_or("?")
+                .to_string();
+            Some(load_profile(self.storage.as_ref(), &path, &stem))
+        });
+        Ok(rank(profiles))
     }
 }
 
 /// Affiche le classement des profils d'un dossier.
-pub(super) fn write_leaderboard(dir: &Path, out: &mut dyn Write) -> Result<(), CliError> {
-    let (board, skipped) = leaderboard(dir)?;
+pub(super) fn write_leaderboard(
+    dir: &Path,
+    board: &[LeaderEntry],
+    skipped: usize,
+    out: &mut dyn Write,
+) -> Result<(), CliError> {
     if board.is_empty() {
         writeln!(out, "(aucun profil dans « {} »)", dir.display())?;
         return Ok(());

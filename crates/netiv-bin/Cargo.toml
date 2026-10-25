@@ -11,7 +11,7 @@ name = "netiv"
 path = "src/main.rs"
 
 [dependencies]
-netiv-cli = { workspace = true }
+netiv-cli = { workspace = true, features = ["parallel"] }
 netiv-core = { workspace = true }
 netiv-topology = { workspace = true }
 netiv-analysis = { workspace = true }

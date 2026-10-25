@@ -25,10 +25,27 @@ use netiv_core::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Version actuelle du format des topologies (voir
+/// `docs/formats-versionnement.md`).
+pub const TOPOLOGY_SCHEMA_VERSION: u32 = 1;
+
+fn schema_v1() -> u32 {
+    1
+}
+
+fn is_schema_v1(v: &u32) -> bool {
+    *v == 1
+}
+
 /// Description complète d'un réseau.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TopologyDef {
+    /// Version du format. Absente, elle vaut 1 ; elle n'est écrite que si elle
+    /// diffère de 1, pour que les fichiers de version 1 restent identiques à
+    /// ceux des versions précédentes de NETIV.
+    #[serde(default = "schema_v1", skip_serializing_if = "is_schema_v1")]
+    pub schema_version: u32,
     /// Métadonnées.
     pub network: NetworkDef,
     /// Équipements.
@@ -369,6 +386,14 @@ pub fn load_yaml(text: &str) -> Result<Loaded, TopologyErrors> {
 
 /// Construit la simulation décrite par `def`.
 pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
+    if def.schema_version > TOPOLOGY_SCHEMA_VERSION {
+        return Err(TopologyErrors {
+            errors: vec![format!(
+                "topologie au format version {} non supportée (cette version de NETIV lit jusqu'à la version {TOPOLOGY_SCHEMA_VERSION})",
+                def.schema_version
+            )],
+        });
+    }
     let mut errors: Vec<String> = Vec::new();
     let mut sim = Simulation::new(def.network.seed);
     let mut ids: BTreeMap<&str, DeviceId> = BTreeMap::new();
@@ -1245,6 +1270,7 @@ pub fn export(sim: &Simulation, name: &str) -> TopologyDef {
         })
         .collect();
     TopologyDef {
+        schema_version: TOPOLOGY_SCHEMA_VERSION,
         network: NetworkDef {
             name: name.to_string(),
             seed: sim.seed(),

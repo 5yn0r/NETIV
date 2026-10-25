@@ -29,17 +29,17 @@ serde_yaml_ng = "0.10"
 clap = { version = "4", features = ["derive"] }
 netiv-core = { path = "crates/netiv-core" }
 netiv-topology = { path = "crates/netiv-topology" }
-netiv-diagnostics = { path = "crates/netiv-diagnostics" }
-netiv-chaos = { path = "crates/netiv-chaos" }
-netiv-security = { path = "crates/netiv-security" }
-netiv-analysis = { path = "crates/netiv-analysis" }
-netiv-education = { path = "crates/netiv-education" }
+netiv-diagnostics = { path = "crates/netiv-diagnostics", default-features = false }
+netiv-chaos = { path = "crates/netiv-chaos", default-features = false }
+netiv-security = { path = "crates/netiv-security", default-features = false }
+netiv-analysis = { path = "crates/netiv-analysis", default-features = false }
+netiv-education = { path = "crates/netiv-education", default-features = false }
 tempfile = "3"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
-netiv-cli = { path = "crates/netiv-cli" }
+netiv-cli = { path = "crates/netiv-cli", default-features = false }
 netiv-api = { path = "crates/netiv-api" }
 
 [workspace.lints.rust]

@@ -311,3 +311,55 @@ fn the_topology_is_locked_during_a_challenge() {
     run(&mut s, "challenge giveup");
     assert!(s.edit_lock().is_none());
 }
+
+#[test]
+fn a_session_can_live_entirely_in_memory() {
+    use netiv_cli::{MemoryStorage, Storage};
+    use std::path::Path;
+
+    // Ce que fait le navigateur : aucun disque, des fichiers en mémoire.
+    let store = MemoryStorage::new();
+    store
+        .write(Path::new("labs/mon-lab.yaml"), &example("mvp.yaml"))
+        .unwrap();
+    let clock = ManualClock::new(1_000);
+    let mut s = Session::with_profile_in(
+        Box::new(store.clone()),
+        "alice",
+        PathBuf::from("profils/alice.json"),
+    )
+    .unwrap();
+    s.set_manual_clock(&clock);
+    s.set_labs_dir(PathBuf::from("labs"));
+
+    assert!(run(&mut s, "lab list").contains("mon-lab"));
+    assert!(run(&mut s, "lab open mon-lab").contains("chargé"));
+    run(&mut s, "lab export partage.netiv Mon lab");
+    assert!(
+        store
+            .read(Path::new("partage.netiv"))
+            .unwrap()
+            .contains("format_version: 1")
+    );
+    run(&mut s, "capture save c.nlv");
+    assert!(run(&mut s, "forensic analyze c.nlv").contains("CHRONOLOGIE"));
+
+    // Le profil est sauvegardé dans le stockage, pas sur le disque.
+    run(&mut s, "challenge start beginner-01");
+    run(&mut s, "gateway PC1 192.168.1.1");
+    run(&mut s, "challenge check");
+    run(&mut s, "answer PC1 wrong-gateway");
+    let saved = store.read(Path::new("profils/alice.json")).unwrap();
+    assert!(saved.contains("beginner-01"), "{saved}");
+    assert!(!Path::new("profils/alice.json").exists());
+    assert!(run(&mut s, "leaderboard").contains("alice"));
+
+    // Une autre session sur le même stockage relit ce profil.
+    let other = Session::with_profile_in(
+        Box::new(store.clone()),
+        "alice",
+        PathBuf::from("profils/alice.json"),
+    )
+    .unwrap();
+    assert!(other.profile().has_completed("beginner-01"));
+}

@@ -6,6 +6,7 @@
 | [Référence des commandes](reference-commandes.md) | tous | Chaque commande de la session, avec syntaxe et exemples |
 | [Format des topologies](format-topologie.md) | auteurs de labs | YAML complet : équipements, interfaces, VLAN, services, ACL ; fichiers `.netiv` |
 | [Écrire un défi, un cyber range, un cours](format-defis.md) | formateurs | YAML des défis, scénarios de cyber range, cours (mode enseignant) |
+| [Versionnement des formats](formats-versionnement.md) | intégrateurs | Version des topologies, labs, profils et captures ; règle de compatibilité |
 | [API HTTP](api.md) | intégrateurs | Endpoints de `netiv serve`, exemples, garde-fous de sécurité |
 | [Architecture](architecture.md) | développeurs | Crates, cycle d'un événement, trace causale, sondes |
 | [Performance](performance.md) | développeurs | Modèle de coût, `netiv bench`, résultats et limites |

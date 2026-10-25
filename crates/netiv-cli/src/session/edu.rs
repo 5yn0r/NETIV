@@ -115,10 +115,7 @@ impl Session {
     }
 
     fn save_profile(&self) -> Result<(), CliError> {
-        if let Some(path) = &self.profile_path {
-            self.profile.save(path)?;
-        }
-        Ok(())
+        self.save_profile_file()
     }
 
     // ------------------------------------------------------------------
@@ -197,7 +194,7 @@ impl Session {
         if let Some(c) = builtin::challenge(what) {
             return Ok(c.clone());
         }
-        if !self.sandbox && Path::new(what).is_file() {
+        if !self.sandbox && self.storage.is_file(Path::new(what)) {
             let text = self.read_text(what)?;
             if text.contains("format_version") {
                 let bundle = netiv_topology::Bundle::from_yaml(&text)?;
@@ -600,7 +597,7 @@ impl Session {
                     [] => write!(out, "{yaml}")?,
                     [file] => {
                         self.fs_allowed()?;
-                        if Path::new(file).exists() {
+                        if self.storage.exists(Path::new(file)) {
                             return err(format!("« {file} » existe déjà : je ne l'écrase pas"));
                         }
                         self.write_text(file, &yaml)?;

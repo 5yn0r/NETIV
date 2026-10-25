@@ -23,3 +23,19 @@ jobs:
       - run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
+      # Résultats identiques sans le multi-thread (configuration WebAssembly).
+      - run: cargo test -p netiv-diagnostics -p netiv-security -p netiv-analysis -p netiv-education -p netiv-cli --no-default-features
+
+  # Garde-fou : le moteur doit rester compilable pour le navigateur.
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: >-
+          cargo check --target wasm32-unknown-unknown --no-default-features
+          -p netiv-core -p netiv-topology -p netiv-diagnostics -p netiv-chaos
+          -p netiv-security -p netiv-analysis -p netiv-education -p netiv-cli

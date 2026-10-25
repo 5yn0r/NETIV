@@ -25,8 +25,11 @@ use netiv_core::{
     Command, DeviceId, Ipv4Net, MacAddr, SimTime, Simulation, StaticRoute, TraceEvent, TraceId,
 };
 use netiv_diagnostics::{Layer, Request, RootCause, diagnose, hints_for};
+use netiv_education::profile::ProfileError;
 use netiv_education::{ChallengeRun, Profile, RangeRun};
 use netiv_topology::{Layout, Loaded, load_any};
+
+use crate::storage::{Storage, default_storage};
 
 /// Erreur affichable à l'utilisateur.
 #[derive(Debug)]
@@ -177,6 +180,8 @@ pub struct Session {
     range_run: Option<RangeRun>,
     clock: Box<dyn Fn() -> u64 + Send>,
     sandbox: bool,
+    /// Où sont lus et écrits les fichiers (disque ou mémoire).
+    storage: Box<dyn Storage>,
     /// Positions des équipements sur le schéma (interface web, labs partagés).
     layout: Layout,
 }
@@ -195,8 +200,9 @@ impl Default for Session {
             labs_dir: std::path::PathBuf::from("labs"),
             run: None,
             range_run: None,
-            clock: Box::new(system_seconds),
+            clock: Box::new(default_clock),
             sandbox: false,
+            storage: default_storage(),
             layout: Layout::new(),
         }
     }
@@ -225,11 +231,37 @@ impl ManualClock {
     }
 }
 
-/// Secondes écoulées depuis l'epoch Unix.
-fn system_seconds() -> u64 {
+/// Horloge par défaut : secondes écoulées depuis l'epoch Unix.
+#[cfg(not(target_arch = "wasm32"))]
+fn default_clock() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
+}
+
+/// Horloge par défaut en WebAssembly : `SystemTime` n'y existe pas (il
+/// panique), l'hôte doit fournir l'heure avec [`Session::set_clock`]. En
+/// attendant, le temps est figé à 0 : rien ne panique, les chronomètres de
+/// challenge restent simplement à zéro.
+#[cfg(target_arch = "wasm32")]
+fn default_clock() -> u64 {
+    0
+}
+
+/// Lit un profil dans `storage` ; un fichier absent donne un profil neuf.
+fn load_profile(
+    storage: &dyn Storage,
+    path: &std::path::Path,
+    name: &str,
+) -> Result<Profile, ProfileError> {
+    match storage.read(path) {
+        Ok(text) => Profile::from_json(&text, &path.display().to_string()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Profile::new(name)),
+        Err(e) => Err(ProfileError::Io {
+            path: path.display().to_string(),
+            reason: e.to_string(),
+        }),
+    }
 }
 
 impl Session {
@@ -238,12 +270,32 @@ impl Session {
         Self::default()
     }
 
-    /// Session rattachée à un profil sauvegardé dans `path`.
+    /// Session sans topologie dont les fichiers passent par `storage`.
+    pub fn with_storage(storage: Box<dyn Storage>) -> Self {
+        Session {
+            storage,
+            ..Session::default()
+        }
+    }
+
+    /// Session rattachée à un profil sauvegardé dans `path` (stockage par
+    /// défaut : le disque en natif).
     pub fn with_profile(name: &str, path: std::path::PathBuf) -> Result<Self, CliError> {
-        let profile = Profile::load(&path, name)?;
+        Self::with_profile_in(default_storage(), name, path)
+    }
+
+    /// Session rattachée à un profil sauvegardé dans `path`, au sein de
+    /// `storage`. Un profil absent est créé à la première sauvegarde.
+    pub fn with_profile_in(
+        storage: Box<dyn Storage>,
+        name: &str,
+        path: std::path::PathBuf,
+    ) -> Result<Self, CliError> {
+        let profile = load_profile(storage.as_ref(), &path, name)?;
         Ok(Session {
             profile,
             profile_path: Some(path),
+            storage,
             ..Session::default()
         })
     }
@@ -282,10 +334,24 @@ impl Session {
     /// le même profil).
     pub fn reload_profile(&mut self) {
         if let Some(path) = &self.profile_path {
-            if let Ok(p) = Profile::load(path, &self.profile.name) {
+            if let Ok(p) = load_profile(self.storage.as_ref(), path, &self.profile.name) {
                 self.profile = p;
             }
         }
+    }
+
+    /// Écrit le profil à son emplacement (sans effet s'il n'en a pas).
+    fn save_profile_file(&self) -> Result<(), CliError> {
+        if let Some(path) = &self.profile_path {
+            let text = self.profile.to_json()?;
+            self.storage
+                .write_atomic(path, &text)
+                .map_err(|e| ProfileError::Io {
+                    path: path.display().to_string(),
+                    reason: e.to_string(),
+                })?;
+        }
+        Ok(())
     }
 
     /// La simulation chargée, en lecture seule.
@@ -302,13 +368,15 @@ impl Session {
 
     fn read_text(&self, path: &str) -> Result<String, CliError> {
         self.fs_allowed()?;
-        std::fs::read_to_string(path)
+        self.storage
+            .read(std::path::Path::new(path))
             .map_err(|e| CliError(format!("lecture de « {path} » impossible : {e}")))
     }
 
     fn write_text(&self, path: &str, text: &str) -> Result<(), CliError> {
         self.fs_allowed()?;
-        std::fs::write(path, text)
+        self.storage
+            .write(std::path::Path::new(path), text)
             .map_err(|e| CliError(format!("écriture de « {path} » impossible : {e}")))
     }
 

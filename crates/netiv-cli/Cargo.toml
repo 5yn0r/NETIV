@@ -10,6 +10,12 @@ license.workspace = true
 name = "netiv_cli"
 path = "src/lib.rs"
 
+[features]
+default = ["parallel"]
+# Exécution des sondes sur plusieurs threads. Sans cette feature (cible
+# WebAssembly), tout s'exécute en séquentiel, avec des résultats identiques.
+parallel = ["netiv-diagnostics/parallel", "netiv-chaos/parallel", "netiv-education/parallel", "netiv-security/parallel", "netiv-analysis/parallel"]
+
 [dependencies]
 netiv-core = { workspace = true }
 netiv-topology = { workspace = true }
