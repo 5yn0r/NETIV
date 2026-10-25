@@ -12,6 +12,7 @@ members = [
     "crates/netiv-education",
     "crates/netiv-cli",
     "crates/netiv-service",
+    "crates/netiv-wasm",
 ]
 
 [workspace.package]
@@ -50,3 +51,13 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 unwrap_used = "warn"
+
+# Compilation du module WebAssembly (`wasm-pack build --profile wasm-release`) :
+# priorité à la taille, sans toucher au profil `release` de la CLI native.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

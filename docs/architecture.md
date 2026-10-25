@@ -19,9 +19,14 @@ Vue d'ensemble pour qui veut lire ou modifier le code. La référence détaillé
                       netiv-cli           Session : interprète des commandes (bibliothèque)
                           │
                     netiv-service         logique de l'API sans HTTP : labs, limites, JSON
-                          │
-               netiv-api ─┴─ netiv-bin    API HTTP + web embarqué │ binaire « netiv »
+                  ┌───────┴────────┐
+             netiv-api         netiv-wasm         API HTTP + web embarqué │ navigateur (WebAssembly)
+                  │
+             netiv-bin                            binaire « netiv »
 ```
+
+`netiv-wasm` fait tourner le moteur dans le navigateur ([wasm.md](wasm.md)), avec la même
+interface web que `netiv serve`.
 
 Règles :
 

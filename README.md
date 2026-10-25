@@ -61,6 +61,7 @@ netiv run topologie.yaml --script lab.txt     # exécute des commandes puis quit
 netiv generate --type campus --routers 5 --hosts 20 --seed 1   # topologie générée
 netiv docs topologie.yaml --format md         # documentation (md, json, yaml)
 netiv serve                                   # API HTTP + interface web sur http://127.0.0.1:8787
+crates/netiv-wasm/build-web.sh                # la même interface, sans serveur (WebAssembly) : docs/wasm.md
 netiv bench                                   # mesures de performance reproductibles
 ```
 
@@ -146,6 +147,7 @@ Conventions et organisation des tests : [docs/contribuer.md](docs/contribuer.md)
 | `netiv-cli` | Session (REPL), bibliothèque `netiv_cli` |
 | `netiv-service` | Logique de l'API sans HTTP (labs, limites, JSON), partagée avec WebAssembly |
 | `netiv-api` | API HTTP (axum) + interface web embarquée, fine couche sur `netiv-service` |
+| `netiv-wasm` | Moteur dans le navigateur (WebAssembly) : classe JS `NetivEngine`, même API que `netiv serve` |
 | `netiv-bin` | Binaire `netiv` (run, validate, generate, docs, serve, bench) |
 
 Le moteur est **déterministe** : même topologie, mêmes commandes, même graine → trace identique.

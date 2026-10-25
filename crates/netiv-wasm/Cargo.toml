@@ -1,0 +1,28 @@
+[package]
+name = "netiv-wasm"
+description = "NETIV dans le navigateur (WebAssembly) : le même moteur et la même API que netiv serve, sans serveur"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# Messages de panique lisibles dans la console du navigateur (développement).
+dev = ["dep:console_error_panic_hook"]
+
+[dependencies]
+# Sans la feature « parallel » : pas de threads dans le navigateur.
+netiv-service = { workspace = true }
+netiv-cli = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[lints]
+workspace = true

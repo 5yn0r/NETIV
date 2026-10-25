@@ -39,4 +39,18 @@ jobs:
           cargo check --target wasm32-unknown-unknown --no-default-features
           -p netiv-core -p netiv-topology -p netiv-diagnostics -p netiv-chaos
           -p netiv-security -p netiv-analysis -p netiv-education -p netiv-cli
-          -p netiv-service
+          -p netiv-service -p netiv-wasm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Outils (wasm-pack, wasm-opt), versions figées
+        run: |
+          curl -sSfL https://github.com/wasm-bindgen/wasm-pack/releases/download/v0.15.0/wasm-pack-v0.15.0-x86_64-unknown-linux-musl.tar.gz \
+            | tar xz --strip-components=1 -C ~/.cargo/bin wasm-pack-v0.15.0-x86_64-unknown-linux-musl/wasm-pack
+          curl -sSfL https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz \
+            | tar xz --strip-components=2 -C ~/.cargo/bin binaryen-version_133/bin/wasm-opt
+      - run: crates/netiv-wasm/build-web.sh
+      # Le vrai module : sorties identiques au natif (scénario golden), défi, éditeur.
+      - run: node crates/netiv-wasm/tests/wasm.mjs
+      - name: Taille du module compressé (objectif ≤ 1,5 Mo)
+        run: test "$(gzip -9 -c crates/netiv-wasm/dist/netiv_wasm_bg.wasm | wc -c)" -le 1572864

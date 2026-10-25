@@ -12,6 +12,7 @@
 //! * `netiv-wasm` : le moteur dans le navigateur, via [`Service::request`]
 //!   qui reproduit les routes de l'API HTTP.
 
+pub mod catalog;
 mod request;
 pub mod snapshot;
 
@@ -32,6 +33,7 @@ use netiv_topology::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use catalog::{Catalog, CatalogEntry, catalog};
 pub use request::Reply;
 
 /// Nombre maximal de labs ouverts en même temps.

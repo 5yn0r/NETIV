@@ -93,7 +93,15 @@
 
   // ------------------------------------------------------------------ API
 
+  // Transport, choisi au démarrage :
+  // * mode serveur (défaut) : `fetch` vers l'API HTTP de `netiv serve` ;
+  // * mode WebAssembly : le moteur est dans la page (`window.netivEngine`,
+  //   installé par crates/netiv-wasm/web/netiv-boot.js), même contrat que l'API.
+  // `window.NETIV_MODE = 'server'` force le mode serveur.
+  const engine = window.NETIV_MODE === 'server' ? null : (window.netivEngine || null);
+
   async function api(method, path, body) {
+    if (engine) return engineApi(method, path, body);
     const init = { method, headers: {} };
     if (body !== undefined) {
       init.headers['Content-Type'] = 'application/json';
@@ -113,6 +121,17 @@
       throw err;
     }
     return data;
+  }
+
+  /** Même requête, traitée par le moteur WebAssembly de la page. */
+  async function engineApi(method, path, body) {
+    try {
+      return engine.request(method, path, body);
+    } catch (e) {
+      const err = new Error((e && e.error) || String(e));
+      err.status = (e && e.status) || 500;
+      throw err;
+    }
   }
 
   function banner(msg, kind = 'error') {
@@ -2344,12 +2363,16 @@
         });
       } else {
         // Un premier réseau tout de suite, pour que l'écran ne soit pas vide.
-        await guarded(() => createLab({ builtin: 'office' }));
+        // Une page hôte peut choisir lequel (`window.NETIV_START`, par
+        // exemple { challenge: 'beginner-01' }).
+        await guarded(() => createLab(window.NETIV_START || { builtin: 'office' }));
       }
     } catch (e) {
       banner(e.message);
     }
   }
 
-  document.addEventListener('DOMContentLoaded', boot);
+  // Chargé après coup (mode WebAssembly) : la page est déjà prête.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
