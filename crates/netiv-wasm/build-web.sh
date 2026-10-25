@@ -41,7 +41,7 @@ sed 's|<script src="app.js" defer></script>|<script type="module" src="netiv-boo
   "$web/index.html" > "$out/index.html"
 
 echo "==> Catalogue des épreuves"
-cargo run --quiet -p netiv-wasm --example catalog > "$out/catalog.json"
+cargo run --quiet --manifest-path "$root/Cargo.toml" -p netiv-wasm --example catalog > "$out/catalog.json"
 
 version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$root/Cargo.toml" | head -1)"
 raw=$(wc -c < "$out/netiv_wasm_bg.wasm")
