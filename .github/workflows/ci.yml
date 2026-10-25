@@ -24,7 +24,7 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
       # Résultats identiques sans le multi-thread (configuration WebAssembly).
-      - run: cargo test -p netiv-diagnostics -p netiv-security -p netiv-analysis -p netiv-education -p netiv-cli --no-default-features
+      - run: cargo test -p netiv-diagnostics -p netiv-security -p netiv-analysis -p netiv-education -p netiv-cli -p netiv-service --no-default-features
 
   # Garde-fou : le moteur doit rester compilable pour le navigateur.
   wasm:
@@ -39,3 +39,4 @@ jobs:
           cargo check --target wasm32-unknown-unknown --no-default-features
           -p netiv-core -p netiv-topology -p netiv-diagnostics -p netiv-chaos
           -p netiv-security -p netiv-analysis -p netiv-education -p netiv-cli
+          -p netiv-service

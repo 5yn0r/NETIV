@@ -29,7 +29,7 @@ use netiv_education::profile::ProfileError;
 use netiv_education::{ChallengeRun, Profile, RangeRun};
 use netiv_topology::{Layout, Loaded, load_any};
 
-use crate::storage::{Storage, default_storage};
+use crate::storage::{Storage, default_storage, load_profile};
 
 /// Erreur affichable à l'utilisateur.
 #[derive(Debug)]
@@ -246,22 +246,6 @@ fn default_clock() -> u64 {
 #[cfg(target_arch = "wasm32")]
 fn default_clock() -> u64 {
     0
-}
-
-/// Lit un profil dans `storage` ; un fichier absent donne un profil neuf.
-fn load_profile(
-    storage: &dyn Storage,
-    path: &std::path::Path,
-    name: &str,
-) -> Result<Profile, ProfileError> {
-    match storage.read(path) {
-        Ok(text) => Profile::from_json(&text, &path.display().to_string()),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Profile::new(name)),
-        Err(e) => Err(ProfileError::Io {
-            path: path.display().to_string(),
-            reason: e.to_string(),
-        }),
-    }
 }
 
 impl Session {

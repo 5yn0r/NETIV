@@ -28,7 +28,7 @@ pub const HINT_PENALTY: u32 = 10;
 pub const WRONG_ANSWER_PENALTY: u32 = 10;
 
 /// Résultat chiffré d'un challenge.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Score {
     /// Points de diagnostic.
     pub diagnosis: u32,

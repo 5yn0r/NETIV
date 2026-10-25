@@ -27,6 +27,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 | Catalogue de pannes | `crates/netiv-chaos/tests/` | Chaque panne est retrouvée par `diagnose`, puis réparée. |
 | Générateurs | `crates/netiv-topology/tests/`, `netiv-education` | Tout réseau généré est joignable ; tout défi généré est auto-validé. |
 | API | `crates/netiv-api/tests/api.rs` | Requêtes en mémoire (`tower::ServiceExt::oneshot`), sans ouvrir de port. |
+| Service | `crates/netiv-service/tests/`, `crates/netiv-api/tests/parity.rs` | Opérations sans HTTP, stockage en mémoire ; le routeur `Service::request` répond comme l'API HTTP (mêmes codes, mêmes JSON). |
 | Parallélisme | `crates/netiv-analysis/tests/analysis.rs` | Résultats identiques avec 1, 2, 5 et 16 threads. |
 | Documentation | `crates/netiv-cli/tests/docs.rs` | Chaque commande de `help` figure dans [reference-commandes.md](reference-commandes.md). |
 

@@ -144,7 +144,8 @@ Conventions et organisation des tests : [docs/contribuer.md](docs/contribuer.md)
 | `netiv-analysis` | Accessibilité, what-if, score de santé, documentation |
 | `netiv-education` | Défis, scoring, profils, cours, cyber ranges, tuteur |
 | `netiv-cli` | Session (REPL), bibliothèque `netiv_cli` |
-| `netiv-api` | API HTTP (axum) + interface web embarquée |
+| `netiv-service` | Logique de l'API sans HTTP (labs, limites, JSON), partagée avec WebAssembly |
+| `netiv-api` | API HTTP (axum) + interface web embarquée, fine couche sur `netiv-service` |
 | `netiv-bin` | Binaire `netiv` (run, validate, generate, docs, serve, bench) |
 
 Le moteur est **déterministe** : même topologie, mêmes commandes, même graine → trace identique.

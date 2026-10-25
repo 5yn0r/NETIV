@@ -411,17 +411,9 @@ version = "0.4.0"
 dependencies = [
  "axum",
  "http-body-util",
- "netiv-analysis",
- "netiv-chaos",
- "netiv-cli",
- "netiv-core",
- "netiv-diagnostics",
- "netiv-education",
- "netiv-security",
- "netiv-topology",
+ "netiv-service",
  "serde",
  "serde_json",
- "serde_yaml_ng",
  "tempfile",
  "tokio",
  "tower",
@@ -514,6 +506,23 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "netiv-service"
+version = "0.4.0"
+dependencies = [
+ "netiv-analysis",
+ "netiv-cli",
+ "netiv-core",
+ "netiv-diagnostics",
+ "netiv-education",
+ "netiv-security",
+ "netiv-topology",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "tempfile",
 ]
 
 [[package]]

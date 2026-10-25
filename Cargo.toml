@@ -11,6 +11,7 @@ members = [
     "crates/netiv-bin",
     "crates/netiv-education",
     "crates/netiv-cli",
+    "crates/netiv-service",
 ]
 
 [workspace.package]
@@ -41,6 +42,7 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 netiv-cli = { path = "crates/netiv-cli", default-features = false }
 netiv-api = { path = "crates/netiv-api" }
+netiv-service = { path = "crates/netiv-service", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

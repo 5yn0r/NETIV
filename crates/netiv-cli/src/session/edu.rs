@@ -31,8 +31,11 @@ pub struct ChallengeInfo {
     pub hints_used: u32,
     /// Secondes restantes sur le temps conseillé (négatif si dépassé).
     pub remaining_secs: i64,
-    /// Score final, s'il y en a un.
+    /// Score final, s'il y en a un (challenge seulement).
     pub score: Option<u32>,
+    /// Détail du score final (diagnostic, correction, temps, indices, XP),
+    /// pour un challenge comme pour un cyber range.
+    pub score_detail: Option<Score>,
 }
 
 const LOCKED: &str = "indisponible pendant un challenge : c'est à toi de trouver (« hint » si tu bloques, −10 points)";
@@ -72,6 +75,7 @@ impl Session {
                 hints_used: r.hints_used(),
                 remaining_secs: r.remaining_secs(now),
                 score: r.score().map(|s| s.total),
+                score_detail: r.score().cloned(),
             });
         }
         self.range_run.as_ref().map(|r| {
@@ -87,6 +91,7 @@ impl Session {
                 hints_used: r.hints_used(),
                 remaining_secs: r.remaining_secs(now),
                 score: None,
+                score_detail: r.score().cloned(),
             }
         })
     }

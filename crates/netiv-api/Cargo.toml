@@ -7,15 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-netiv-core = { workspace = true }
-netiv-topology = { workspace = true }
-serde_yaml_ng = { workspace = true }
-netiv-diagnostics = { workspace = true }
-netiv-security = { workspace = true }
-netiv-analysis = { workspace = true }
-netiv-education = { workspace = true }
-netiv-chaos = { workspace = true }
-netiv-cli = { workspace = true, features = ["parallel"] }
+netiv-service = { workspace = true, features = ["parallel"] }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

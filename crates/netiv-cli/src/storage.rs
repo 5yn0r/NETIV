@@ -10,6 +10,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use netiv_education::Profile;
+use netiv_education::profile::ProfileError;
+
 /// Accès aux fichiers d'une session.
 ///
 /// Les chemins sont ceux que donne l'utilisateur ou la configuration ; une
@@ -37,6 +40,9 @@ pub trait Storage: Send {
 
     /// Crée un dossier et ses parents (sans effet s'il existe).
     fn create_dir_all(&self, dir: &Path) -> io::Result<()>;
+
+    /// Un autre accès aux **mêmes** fichiers (pour une autre session).
+    fn share(&self) -> Box<dyn Storage>;
 
     /// Écriture atomique : le dossier parent est créé, le texte est écrit
     /// dans un fichier temporaire, puis renommé. Un lecteur voit l'ancien
@@ -89,6 +95,10 @@ impl Storage for FsStorage {
 
     fn create_dir_all(&self, dir: &Path) -> io::Result<()> {
         std::fs::create_dir_all(dir)
+    }
+
+    fn share(&self) -> Box<dyn Storage> {
+        Box::new(FsStorage)
     }
 }
 
@@ -166,6 +176,26 @@ impl Storage for MemoryStorage {
     fn create_dir_all(&self, _dir: &Path) -> io::Result<()> {
         // Les dossiers n'existent qu'à travers les fichiers qu'ils contiennent.
         Ok(())
+    }
+
+    fn share(&self) -> Box<dyn Storage> {
+        Box::new(self.clone())
+    }
+}
+
+/// Lit un profil dans `storage` ; un fichier absent donne un profil neuf.
+pub fn load_profile(
+    storage: &dyn Storage,
+    path: &Path,
+    name: &str,
+) -> Result<Profile, ProfileError> {
+    match storage.read(path) {
+        Ok(text) => Profile::from_json(&text, &path.display().to_string()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Profile::new(name)),
+        Err(e) => Err(ProfileError::Io {
+            path: path.display().to_string(),
+            reason: e.to_string(),
+        }),
     }
 }
 

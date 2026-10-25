@@ -17,8 +17,10 @@ Vue d'ensemble pour qui veut lire ou modifier le code. La référence détaillé
                     netiv-education       défis, scores, profils, cours, cyber ranges, tuteur
                           │
                       netiv-cli           Session : interprète des commandes (bibliothèque)
-                    ┌─────┴─────┐
-               netiv-api     netiv-bin    API HTTP + web embarqué │ binaire « netiv »
+                          │
+                    netiv-service         logique de l'API sans HTTP : labs, limites, JSON
+                          │
+               netiv-api ─┴─ netiv-bin    API HTTP + web embarqué │ binaire « netiv »
 ```
 
 Règles :
@@ -26,6 +28,12 @@ Règles :
 - `netiv-core` ne dépend d'aucune interface, d'aucun runtime asynchrone et d'aucune entrée/sortie.
   Il ne dépend que de `serde`.
 - Tokio et axum n'apparaissent que dans `netiv-api` (et `netiv-bin`, qui le lance).
+- La logique des réponses de l'API (création des labs, limites, verrous pendant un défi, JSON)
+  est écrite **une fois**, dans `netiv-service`. `netiv-api` n'y ajoute que le HTTP : extraction
+  des paramètres, codes de retour, en-têtes de sécurité, contrôle de l'hôte. `Service::request`
+  rejoue les mêmes routes sans HTTP pour le navigateur (WebAssembly).
+- Les fichiers (profils, labs, captures) passent par le trait `netiv_cli::Storage` : le disque
+  en CLI et en serveur, la mémoire dans le navigateur.
 - La CLI et l'API partagent la **même** `Session` : une commande se comporte pareil partout.
 
 ## Le moteur en une page
@@ -103,4 +111,4 @@ radiale calculée côté client, positions et zoom mémorisés dans le navigateu
 | une panne du catalogue | `netiv-chaos/src/catalog.rs` (+ cause et indices dans `netiv-diagnostics`) |
 | un contrôle de sécurité | `netiv-security/src/analyzer.rs` |
 | un défi livré | `netiv-education/content/challenges/…` (testé automatiquement) |
-| un endpoint | `netiv-api/src/lib.rs` (+ `snapshot.rs` pour le JSON) |
+| un endpoint | l'opération dans `netiv-service/src/lib.rs` (+ `snapshot.rs` pour le JSON), sa route dans `netiv-service/src/request.rs` et dans `netiv-api/src/lib.rs` |
