@@ -5,7 +5,9 @@ use std::sync::OnceLock;
 use crate::challenge::Challenge;
 
 /// Noms des réseaux livrés.
-pub const TOPOLOGY_NAMES: [&str; 6] = ["office", "dmz", "campus", "triangle", "cyber", "dhcp"];
+pub const TOPOLOGY_NAMES: [&str; 7] = [
+    "office", "dmz", "campus", "triangle", "cyber", "dhcp", "pme",
+];
 
 /// Texte YAML d'un réseau livré.
 pub fn topology(name: &str) -> Option<&'static str> {
@@ -16,11 +18,12 @@ pub fn topology(name: &str) -> Option<&'static str> {
         "triangle" => include_str!("../content/topologies/triangle.yaml"),
         "cyber" => include_str!("../../../examples/cyber.yaml"),
         "dhcp" => include_str!("../content/topologies/dhcp.yaml"),
+        "pme" => include_str!("../content/topologies/pme.yaml"),
         _ => return None,
     })
 }
 
-const CHALLENGE_SOURCES: [(&str, &str); 18] = [
+const CHALLENGE_SOURCES: [(&str, &str); 28] = [
     (
         "beginner/01-passerelle",
         include_str!("../content/challenges/beginner/01-passerelle.yaml"),
@@ -92,6 +95,47 @@ const CHALLENGE_SOURCES: [(&str, &str); 18] = [
     (
         "advanced/18-dhcp-pirate",
         include_str!("../content/challenges/advanced/18-dhcp-pirate.yaml"),
+    ),
+    // Parcours « support IT » (tickets d'assistance, réseau « pme »).
+    (
+        "beginner/19-support-port",
+        include_str!("../content/challenges/beginner/19-support-port.yaml"),
+    ),
+    (
+        "beginner/20-support-apipa",
+        include_str!("../content/challenges/beginner/20-support-apipa.yaml"),
+    ),
+    (
+        "beginner/21-support-imprimante",
+        include_str!("../content/challenges/beginner/21-support-imprimante.yaml"),
+    ),
+    (
+        "beginner/22-support-appli",
+        include_str!("../content/challenges/beginner/22-support-appli.yaml"),
+    ),
+    (
+        "beginner/23-support-dns-poste",
+        include_str!("../content/challenges/beginner/23-support-dns-poste.yaml"),
+    ),
+    (
+        "intermediate/24-support-dns-serveur",
+        include_str!("../content/challenges/intermediate/24-support-dns-serveur.yaml"),
+    ),
+    (
+        "intermediate/25-support-dns-enregistrement",
+        include_str!("../content/challenges/intermediate/25-support-dns-enregistrement.yaml"),
+    ),
+    (
+        "intermediate/26-support-dhcp-plage",
+        include_str!("../content/challenges/intermediate/26-support-dhcp-plage.yaml"),
+    ),
+    (
+        "intermediate/27-support-vlan",
+        include_str!("../content/challenges/intermediate/27-support-vlan.yaml"),
+    ),
+    (
+        "advanced/28-support-conflit",
+        include_str!("../content/challenges/advanced/28-support-conflit.yaml"),
     ),
 ];
 

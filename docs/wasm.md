@@ -29,7 +29,7 @@ Le script :
 | `index.html`, `app.js`, `style.css`, `favicon.svg` | l'interface de `netiv serve`, inchangée (seul le chargement de `app.js` passe par `netiv-boot.js`) |
 | `netiv-boot.js` | charge le module, crée le moteur, l'installe pour l'interface, dialogue avec la page hôte |
 | `netiv_wasm.js`, `netiv_wasm_bg.wasm`, `netiv_wasm.d.ts` | le moteur (wasm-bindgen) |
-| `catalog.json` | les 18 défis et 3 cyber ranges (titre, énoncé, thème, difficulté, durée), sans solutions |
+| `catalog.json` | les 28 défis et 3 cyber ranges (titre, énoncé, thème, difficulté, durée, parcours et ticket de support), sans solutions |
 | `manifest.json` | version, taille et empreinte SHA-256 de chaque fichier, poids à télécharger |
 
 La démo se sert avec n'importe quel serveur de fichiers statiques. Elle ne fait **aucune
@@ -41,10 +41,10 @@ Mesurée sur NETIV 0.4.0 (rustc 1.99, wasm-bindgen 0.2, binaryen 133) :
 
 | | Octets |
 |---|---|
-| `.wasm` brut | 2 039 235 (1,95 Mo) |
-| `.wasm` gzip -9 | **730 249 (713 Ko)** |
-| `.wasm` brotli 11 | **542 755 (530 Ko)** |
-| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 777 154 (759 Ko) |
+| `.wasm` brut | 2 073 960 (1,98 Mo) |
+| `.wasm` gzip -9 | **739 569 (722 Ko)** |
+| `.wasm` brotli 11 | **549 846 (537 Ko)** |
+| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 792 465 (774 Ko) |
 
 L'objectif (moins de 1,5 Mo compressé) est atteint sans retirer de module : sécurité,
 forensique, générateurs et cyber ranges sont tous présents. La CI échoue si le module compressé

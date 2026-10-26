@@ -2,7 +2,7 @@
 //! plateformes qui les présentent hors du simulateur : pages de catalogue,
 //! référencement, filtres. Il ne contient aucune solution.
 
-use netiv_education::builtin;
+use netiv_education::{Ticket, builtin};
 use serde::Serialize;
 
 /// Version du format du catalogue.
@@ -27,6 +27,12 @@ pub struct CatalogEntry {
     pub difficulty: &'static str,
     /// Durée conseillée, en minutes.
     pub minutes: u32,
+    /// Parcours (`support` pour les tickets de support IT), absent sinon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track: Option<String>,
+    /// Ticket de support à l'origine de l'épreuve, absent sinon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticket: Option<Ticket>,
 }
 
 /// Le catalogue complet.
@@ -50,6 +56,8 @@ pub fn catalog() -> Catalog {
         topic: c.topic.clone(),
         difficulty: c.difficulty.slug(),
         minutes: c.time_limit_minutes,
+        track: c.track.clone(),
+        ticket: c.ticket.clone(),
     });
     let ranges = builtin::ranges().iter().map(|r| CatalogEntry {
         kind: "range",
@@ -59,6 +67,8 @@ pub fn catalog() -> Catalog {
         topic: "security".to_string(),
         difficulty: r.difficulty.slug(),
         minutes: r.time_limit_minutes,
+        track: None,
+        ticket: None,
     });
     Catalog {
         format_version: CATALOG_FORMAT_VERSION,
@@ -75,7 +85,7 @@ mod tests {
     fn the_catalog_lists_every_shipped_challenge_and_range() {
         let c = catalog();
         let count = |k: &str| c.entries.iter().filter(|e| e.kind == k).count();
-        assert_eq!(count("challenge"), 18);
+        assert_eq!(count("challenge"), 28);
         assert_eq!(count("range"), 3);
         for e in &c.entries {
             assert!(!e.title.is_empty() && !e.description.is_empty(), "{e:?}");
@@ -86,5 +96,12 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), c.entries.len(), "identifiants uniques");
+        let support: Vec<_> = c
+            .entries
+            .iter()
+            .filter(|e| e.track.as_deref() == Some("support"))
+            .collect();
+        assert_eq!(support.len(), 10);
+        assert!(support.iter().all(|e| e.ticket.is_some()), "{support:?}");
     }
 }

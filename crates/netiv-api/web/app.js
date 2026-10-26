@@ -173,20 +173,148 @@
 
   // ------------------------------------------------------------------ console
 
-  function consoleLine(text, cls) {
+  // ---- console : complétion (Tab)
+
+  const COMMANDS = ['acl', 'answer', 'arp', 'badges', 'baseline', 'cable', 'capture', 'challenge', 'chaos', 'clear',
+    'course', 'curl', 'dashboard', 'devices', 'dhcp', 'diagnose', 'dns', 'docs', 'explain', 'forensic', 'forwarding',
+    'gateway', 'health', 'help', 'hint', 'iface', 'inspect', 'ip', 'lab', 'latency', 'leaderboard', 'learn', 'load',
+    'log', 'loss', 'nslookup', 'ping', 'port', 'range', 'route', 'run', 'security', 'service', 'show', 'step', 'time',
+    'topology', 'trace', 'tutor', 'udp', 'what-if'];
+  const SUBCOMMANDS = {
+    show: ['ifaces', 'arp', 'route', 'mac', 'vlan', 'acl', 'services', 'dhcp', 'dns'],
+    challenge: ['list', 'start', 'show', 'check', 'finish', 'giveup', 'causes', 'export'],
+    range: ['list', 'start', 'show', 'check', 'finish', 'giveup'],
+    route: ['add', 'del'],
+    chaos: ['start', 'undo', 'reveal', 'list'],
+    acl: ['add', 'insert', 'del', 'default', 'stateful'],
+  };
+
+  /** Candidats pour le mot en cours : commande, sous-commande ou équipement. */
+  function candidates(words) {
+    if (words.length === 1) return COMMANDS;
+    const sub = SUBCOMMANDS[words[0]];
+    if (sub && words.length === 2) return [...sub, ...(state.snap ? state.snap.devices.map((d) => d.name) : [])];
+    return state.snap ? state.snap.devices.map((d) => d.name) : [];
+  }
+
+  function clearSuggestions() {
+    const box = $('#console-suggest');
+    if (box && !box.hidden) { clear(box); box.hidden = true; }
+  }
+
+  /** Tab : complète le mot en cours ; plusieurs possibilités → les propose. */
+  function complete(input) {
+    const value = input.value;
+    const words = value.replace(/^\s+/, '').split(/\s+/);
+    const word = words[words.length - 1];
+    const lower = word.toLowerCase();
+    const matches = candidates(words).filter((c) => c.toLowerCase().startsWith(lower));
+    const box = $('#console-suggest');
+    clearSuggestions();
+    if (!matches.length) return;
+    const replace = (choice) => {
+      input.value = value.slice(0, value.length - word.length) + choice + ' ';
+      input.focus();
+    };
+    if (matches.length === 1) { replace(matches[0]); return; }
+    // Préfixe commun, puis la liste des choix.
+    let common = matches[0];
+    for (const m of matches) while (!m.toLowerCase().startsWith(common.toLowerCase())) common = common.slice(0, -1);
+    if (common.length > word.length) input.value = value.slice(0, value.length - word.length) + common;
+    for (const m of matches.slice(0, 24)) {
+      box.append(h('button', { type: 'button', onclick: () => { replace(m); clearSuggestions(); } }, m));
+    }
+    box.hidden = false;
+  }
+
+  // ---- console : rendu
+  //
+  // La sortie vient du serveur : elle n'est jamais interprétée comme du HTML.
+  // Elle est découpée en morceaux de texte, certains dans des <span> colorés
+  // (adresses, durées, réussites, échecs, commandes suggérées).
+
+  /** Motifs colorés, du plus précis au plus général. */
+  const TOKENS = [
+    // Commande suggérée entre guillemets : « trace 1 » (cliquable).
+    ['t-cmd', /«\s?([a-z][^»]{0,80}?)\s?»/g],
+    ['t-ip', /\b(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?\b/g],
+    ['t-num', /\b\d+(?:[.,]\d+)?\s?(?:ms|µs|s)\b/g],
+    ['t-ok', /\b(?:réponse de|réussi|objectif atteint|0 % de perte|en service|OK)\b|✓/g],
+    ['t-bad', /\b(?:pas de réponse|délai dépassé|100 % de perte|inaccessible|injoignable|refusée?|coupée?|échec|abandon)\b|✗/g],
+  ];
+
+  /** Texte d'une sortie → nœuds, avec les motifs colorés. */
+  function highlight(text) {
+    const marks = [];
+    for (const [cls, re] of TOKENS) {
+      for (const m of text.matchAll(re)) {
+        const start = m.index, end = start + m[0].length;
+        if (marks.some((k) => start < k.end && end > k.start)) continue;
+        // Entre guillemets, seules les vraies commandes deviennent cliquables
+        // (« Réseau « office » chargé » cite un nom, pas une commande).
+        if (cls === 't-cmd' && !COMMANDS.includes(m[1].trim().split(/\s+/)[0])) continue;
+        marks.push({ start, end, cls, cmd: cls === 't-cmd' ? m[1].trim() : null });
+      }
+    }
+    marks.sort((a, b) => a.start - b.start);
+    const nodes = [];
+    let at = 0;
+    for (const k of marks) {
+      if (k.start > at) nodes.push(text.slice(at, k.start));
+      const part = text.slice(k.start, k.end);
+      nodes.push(k.cmd
+        ? h('button', { type: 'button', class: 't-cmd', title: 'Copier dans la ligne de commande', onclick: () => suggestCommand(k.cmd) }, part)
+        : h('span', { class: k.cls }, part));
+      at = k.end;
+    }
+    if (at < text.length) nodes.push(text.slice(at));
+    return nodes;
+  }
+
+  /** Place une commande dans la ligne de saisie (sans l'exécuter). */
+  function suggestCommand(cmd) {
+    const input = $('#console-in');
+    input.value = cmd.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() + (/[<…]/.test(cmd) ? ' ' : '');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  function consoleAppend(el) {
     const out = $('#console-out');
-    const line = h('div', { class: cls || null }, text);
-    out.append(line);
-    while (out.childElementCount > 1500) out.removeChild(out.firstChild);
+    out.append(el);
+    while (out.childElementCount > 600) out.removeChild(out.firstChild);
     out.scrollTop = out.scrollHeight;
+  }
+
+  /** Ligne d'information, de note ou d'erreur (hors commande). */
+  function consoleLine(text, cls) {
+    consoleAppend(h('div', { class: `entry ${cls || ''}` }, h('div', { class: 'out' }, cls === 'err' ? text : highlight(text))));
+  }
+
+  /** Bloc d'une commande : en-tête (invite, commande, heure) puis sortie. */
+  function consoleCommand(line) {
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const entry = h('div', { class: 'entry' },
+      h('div', { class: 'cmd' }, h('span', { class: 'ps', 'aria-hidden': 'true' }, '›'), h('span', { class: 'line' }, line), h('time', null, time)));
+    consoleAppend(entry);
+    return entry;
+  }
+
+  /** Ajoute la sortie (ou l'erreur) d'une commande à son bloc. */
+  function consoleResult(entry, output, error) {
+    if (output) entry.append(h('div', { class: 'out' }, highlight(output)));
+    if (error) entry.append(h('div', { class: 'out err' }, h('span', { class: 'err-tag' }, 'erreur'), ` ${error}`));
+    if (!output && !error) entry.classList.add('silent');
+    $('#console-out').scrollTop = $('#console-out').scrollHeight;
   }
 
   async function runCommand(line, { echo = true } = {}) {
     if (!state.current) throw new Error("Aucun lab ouvert : choisis un réseau dans le catalogue.");
-    if (echo) consoleLine(`netiv> ${line}`, 'cmd');
+    const entry = echo ? consoleCommand(line) : h('div', { class: 'entry' });
+    if (!echo) consoleAppend(entry);
     const r = await api('POST', `/api/labs/${state.current}/exec`, { line });
-    if (r.output) consoleLine(r.output.replace(/\n+$/, ''));
-    if (r.error) consoleLine(`erreur : ${r.error}`, 'err');
+    consoleResult(entry, r.output && r.output.replace(/\n+$/, ''), r.error);
     applySnapshot(r.snapshot);
     await refreshAfterCommand(r);
     return r;
@@ -2099,6 +2227,11 @@
       root.append(h('p', { class: 'muted' }, 'Aucun défi en cours. Lance-en un depuis l’onglet « Défis » ou « Cyber range » du catalogue.'));
       return;
     }
+    if (c.ticket) {
+      root.append(h('div', { class: 'ticket-head' },
+        h('span', { class: 'ticket-id' }, `Ticket #${c.ticket.id}`),
+        h('span', null, `ouvert par ${c.ticket.requester}`)));
+    }
     root.append(
       h('div', { class: 'chal-title' }, c.title),
       h('div', null, h('span', { class: 'pill' }, c.kind === 'range' ? 'cyber range' : 'défi'),
@@ -2304,6 +2437,7 @@
     $('#console-max').addEventListener('click', () => toggleMax('consoleH'));
     $('#console-min').addEventListener('click', () => setUi({ consoleH: bounds('consoleH')[0], hideConsole: false }));
     $('#console-hide').addEventListener('click', () => setUi({ hideConsole: true }));
+    $('#console-clear').addEventListener('click', () => { clear($('#console-out')); clearSuggestions(); $('#console-in').focus(); });
     $('#panel-wide').addEventListener('click', () => toggleMax('panelW'));
     $('#panel-hide').addEventListener('click', () => setUi({ hidePanel: true }));
     // Les bornes dépendent de la fenêtre : recalculer l'état des boutons.
@@ -2381,11 +2515,13 @@
       state.histPos = state.history.length;
       input.value = '';
       guarded(async () => {
-        if (line === 'clear') { clear($('#console-out')); return; }
+        if (line === 'clear') { clear($('#console-out')); clearSuggestions(); return; }
         await runCommand(line);
       });
     });
     $('#console-in').addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.shiftKey && e.target.value.trim()) { e.preventDefault(); complete(e.target); return; }
+      if (e.key !== 'Tab') clearSuggestions();
       if (e.key === 'ArrowUp' && state.histPos > 0) { e.preventDefault(); state.histPos -= 1; e.target.value = state.history[state.histPos]; }
       else if (e.key === 'ArrowDown') {
         e.preventDefault();

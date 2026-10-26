@@ -291,6 +291,7 @@ fn try_once(
         let objective = Objective {
             from: setup.flow.0.clone(),
             to: dst_ip.to_string(),
+            name: None,
             service: service.map(|(p, port)| ServiceRef {
                 proto: p.to_string(),
                 port,
@@ -305,6 +306,8 @@ fn try_once(
             ),
             topic: spec.topic.to_string(),
             difficulty,
+            track: None,
+            ticket: None,
             description: format!(
                 "{} Trouve la cause et corrige-la.\n\nRéseau : {} équipements, dont {} routeur(s) ou pare-feu.",
                 symptom(&setup.flow.0, &dst_name, dst_ip, service),

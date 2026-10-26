@@ -56,7 +56,7 @@ Le corps contient **exactement une** source :
 | Corps | Effet |
 |---|---|
 | `{"empty": "mon-reseau"}` | Réseau vide, à construire dans l'éditeur |
-| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`, `dhcp`) |
+| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`, `dhcp`, `pme`) |
 | `{"yaml": "network: …"}` | Topologie fournie (YAML, JSON ou `.netiv`) |
 | `{"generate": {"type": "campus", "routers": 5, "hosts": 12, "seed": 1}}` | Topologie générée |
 | `{"challenge": "beginner-01"}` | Défi livré |

@@ -94,7 +94,7 @@ test('les erreurs remontent en { status, error }', () => {
   assert.throws(() => e.request('GET', '/api/nope'), (err) => err.status === 404);
   assert.throws(() => new NetivEngine('{ cassé'), (err) => err.status === 400);
   assert.equal(typeof NetivEngine.version(), 'string');
-  assert.equal(NetivEngine.catalog().entries.length, 21);
+  assert.equal(NetivEngine.catalog().entries.length, 31);
 });
 
 console.log(`${passed} tests WebAssembly réussis`);

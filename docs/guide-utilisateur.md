@@ -131,7 +131,10 @@ relais oublié et un serveur DHCP pirate.
   Molette pour zoomer, glisser le fond pour se déplacer ; boutons + − ⤢ (tout afficher) ↻ (réorganiser).
 - **Barre d'outils** : ping ou requête TCP (remplir le port) d'un clic ; « pas à pas » pour suivre chaque événement
   (les boutons « Pas à pas » et « Tout exécuter » apparaissent quand des événements attendent).
-- **Console** : les mêmes commandes que le terminal, avec historique (↑ ↓).
+- **Console** : les mêmes commandes que le terminal, avec historique (↑ ↓) et complétion (**Tab** :
+  commandes, sous-commandes, noms d'équipements). Chaque commande forme un bloc horodaté ; adresses,
+  durées, réussites et échecs sont colorés ; les commandes suggérées par NETIV (« trace 1 »,
+  « challenge check »…) se cliquent pour remplir la ligne de saisie. Bouton corbeille ou `clear` : effacer.
 - **Panneau de détails** : Appareil, **Parcours** (rejoue un échange étape par étape, avec le paquet
   animé sur le schéma : ◀ ▶ lecture, ← → espace), Trace filtrable, Analyse (santé, sécurité, what-if,
   documentation), Défi (minuteur, indices, réponse).

@@ -1,0 +1,26 @@
+id: support-09
+title: Le comptable isolé
+topic: switching
+difficulty: medium
+track: support
+ticket: { id: "1049", requester: "Yao, comptabilité" }
+description: |
+  « Mon poste (CPT2) n'accède plus à rien depuis que l'informatique a « fait du
+  rangement » dans l'armoire réseau hier soir. Le câble n'a pas bougé et mon
+  voisin CPT1 travaille normalement. »
+
+  Rends à CPT2 l'accès au serveur de l'entreprise (192.168.30.10).
+time_limit_minutes: 20
+topology_ref: pme
+objective: { from: CPT2, to: 192.168.30.10 }
+faults:
+  - port_access: { iface: "SW1:p5", vlan: 99 }
+solution:
+  cause: wrong-vlan
+  device: SW1
+  explanation: |
+    Les postes de la compta sont dans le VLAN 20. Pendant le rangement, le port p5
+    de SW1 (celui de CPT2) a été placé dans le VLAN 99, où il n'y a ni routeur ni
+    serveur DHCP : le poste était isolé du reste de l'entreprise. Une fois le port
+    remis dans le bon VLAN, CPT2 redemande son adresse.
+  commands: ["port SW1 p5 access 20", "dhcp CPT2"]

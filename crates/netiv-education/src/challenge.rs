@@ -3,10 +3,12 @@
 use std::net::Ipv4Addr;
 
 use netiv_chaos::Difficulty;
+use netiv_core::dns::DnsOutcome;
 use netiv_core::packet::L4Proto;
 use netiv_core::{NetivError, Simulation};
 use netiv_diagnostics::{
-    CauseKind, Probe, ProbeKind, Request, RootCause, diagnose, hints_for, run_probe,
+    CauseKind, Probe, ProbeKind, Request, RootCause, diagnose, diagnose_name, hints_for,
+    resolve_in_copy, run_probe,
 };
 use netiv_topology::TopologyDef;
 use serde::{Deserialize, Serialize};
@@ -31,9 +33,39 @@ pub struct Objective {
     pub from: String,
     /// Adresse visée.
     pub to: String,
+    /// Nom DNS par lequel l'émetteur doit joindre `to` (`intranet.pme`) :
+    /// l'objectif exige alors que le nom se résolve en `to`, puis que `to`
+    /// réponde. Absent : l'adresse est visée directement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Service visé ; absent = ping.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service: Option<ServiceRef>,
+}
+
+/// L'objectif est-il atteint sur `sim` ? Avec un nom DNS, le nom doit se
+/// résoudre (depuis l'émetteur) en l'adresse visée, puis celle-ci répondre.
+pub fn objective_reached(
+    sim: &Simulation,
+    probe: &Probe,
+    dns_name: Option<&str>,
+) -> Result<bool, NetivError> {
+    if let Some(name) = dns_name {
+        if resolve_in_copy(sim, probe.src, name).0 != DnsOutcome::Resolved(probe.dst) {
+            return Ok(false);
+        }
+    }
+    Ok(run_probe(sim, probe)?.success)
+}
+
+/// Ticket d'assistance qui présente un challenge de support (facultatif).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Ticket {
+    /// Numéro du ticket (`1042`).
+    pub id: String,
+    /// Personne qui l'a ouvert (« Awa, accueil »).
+    pub requester: String,
 }
 
 impl Objective {
@@ -91,13 +123,20 @@ pub struct Challenge {
     pub difficulty: Difficulty,
     /// Énoncé.
     pub description: String,
+    /// Parcours auquel le challenge appartient (`support` : support IT) ;
+    /// absent : parcours réseau.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track: Option<String>,
+    /// Ticket d'assistance qui présente le challenge (parcours support).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticket: Option<Ticket>,
     /// Durée conseillée.
     #[serde(default = "default_minutes")]
     pub time_limit_minutes: u32,
     /// Réseau décrit en ligne.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topology: Option<TopologyDef>,
-    /// Ou nom d'un réseau livré avec NETIV (`office`, `dmz`, `campus`, `triangle`).
+    /// Ou nom d'un réseau livré avec NETIV (`office`, `dmz`, `campus`, `triangle`, `pme`…).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topology_ref: Option<String>,
     /// Objectif.
@@ -137,6 +176,8 @@ pub struct Built {
     pub baseline: Simulation,
     /// La sonde de l'objectif.
     pub probe: Probe,
+    /// Nom DNS de l'objectif, s'il y en a un.
+    pub dns_name: Option<String>,
     /// La requête de diagnostic correspondante.
     pub request: Request,
     /// La vraie cause racine (calculée par le diagnostic).
@@ -262,8 +303,9 @@ impl Challenge {
             }),
         };
 
+        let dns_name = self.objective.name.as_deref();
         let mut problems = Vec::new();
-        if !run_probe(&healthy, &probe)?.success {
+        if !objective_reached(&healthy, &probe, dns_name)? {
             problems.push("l'objectif ne fonctionne pas sur le réseau sain".to_string());
         }
         let Some(solution_kind) = CauseKind::from_slug(&self.solution.cause) else {
@@ -302,13 +344,16 @@ impl Challenge {
             sim.restart_dhcp()?;
         }
 
-        if run_probe(&sim, &probe)?.success {
+        if objective_reached(&sim, &probe, dns_name)? {
             problems.push(
                 "l'objectif fonctionne malgré les pannes : le challenge n'a rien à réparer"
                     .to_string(),
             );
         }
-        let diagnosis = diagnose(&sim, Some(&healthy), &request)?;
+        let diagnosis = match dns_name {
+            Some(name) => diagnose_name(&sim, Some(&healthy), src, name, request.service)?,
+            None => diagnose(&sim, Some(&healthy), &request)?,
+        };
         let cause = diagnosis.cause.clone();
         match &cause {
             Some(c) => {
@@ -355,6 +400,7 @@ impl Challenge {
             sim,
             baseline: healthy,
             probe,
+            dns_name: self.objective.name.clone(),
             request,
             cause,
             hints,

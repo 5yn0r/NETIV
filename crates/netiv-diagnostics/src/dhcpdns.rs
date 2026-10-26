@@ -16,6 +16,7 @@ use netiv_core::device::Behavior;
 use netiv_core::dhcp::ClientState;
 use netiv_core::dns::{AfterResolve, DnsOutcome};
 use netiv_core::packet::L4Proto;
+use netiv_core::switch::PortMode;
 use netiv_core::{
     Command, DeviceId, DeviceKind, IfaceId, NetivError, Simulation, TraceEvent, TraceKind,
 };
@@ -68,6 +69,177 @@ fn legit_servers(sim: &Simulation) -> Vec<DeviceId> {
         .collect()
 }
 
+/// Avant d'accuser le DHCP : l'interface du poste, son câble et le port d'en
+/// face (souvent un port de switch) sont-ils actifs ? Un technicien vérifie la
+/// couche physique en premier.
+fn access_link_cause(sim: &Simulation, src: DeviceId, iface: IfaceId) -> Option<RootCause> {
+    let me = name(sim, src);
+    let mine = iface_name(sim, src, iface);
+    let i = sim.device(src)?.iface(iface)?;
+    if !i.admin_up {
+        let mut c = RootCause::new(
+            CauseKind::InterfaceDown,
+            &me,
+            format!(
+                "l'interface {me}/{mine} est désactivée : le poste ne peut pas demander d'adresse"
+            ),
+        );
+        c.actual = Some("down".into());
+        c.expected = Some("up".into());
+        c.fix = Some(format!("iface {me} {mine} up ; dhcp {me} renew"));
+        return Some(c);
+    }
+    let link = sim.link(i.link?)?;
+    if !link.up {
+        let mut c = RootCause::new(
+            CauseKind::LinkDown,
+            &me,
+            format!("le câble de {me}/{mine} est coupé : le poste ne peut pas demander d'adresse"),
+        );
+        c.actual = Some("câble coupé".into());
+        c.expected = Some("câble en service".into());
+        c.fix = Some(format!("cable {me} {mine} restore ; dhcp {me} renew"));
+        return Some(c);
+    }
+    let (pd, pi) = link.peer_of(src, iface)?;
+    if !sim.device(pd)?.iface(pi)?.admin_up {
+        let peer = name(sim, pd);
+        let port = iface_name(sim, pd, pi);
+        let mut c = RootCause::new(
+            CauseKind::InterfaceDown,
+            &peer,
+            format!(
+                "le port {peer}/{port}, au bout du câble de {me}, est désactivé : le poste ne peut pas demander d'adresse"
+            ),
+        );
+        c.actual = Some("down".into());
+        c.expected = Some("up".into());
+        c.fix = Some(format!("iface {peer} {port} up ; dhcp {me} renew"));
+        return Some(c);
+    }
+    // Port d'accès dans un VLAN qu'aucun autre port du switch ne porte : le
+    // poste est seul dans son VLAN, sans routeur ni serveur DHCP.
+    let sw_dev = sim.device(pd)?;
+    if let Behavior::Switch(sw) = &sw_dev.behavior {
+        let mode = |i: IfaceId| {
+            sw.ports
+                .get(&i)
+                .cloned()
+                .unwrap_or(PortMode::Access { vlan: 1 })
+        };
+        if let PortMode::Access { vlan } = mode(pi) {
+            let carried = sw_dev
+                .ifaces
+                .iter()
+                .filter(|x| x.id != pi && x.link.is_some())
+                .any(|x| match mode(x.id) {
+                    PortMode::Access { vlan: v } => v == vlan,
+                    PortMode::Trunk { allowed, native } => {
+                        native == vlan || allowed.is_empty() || allowed.contains(&vlan)
+                    }
+                });
+            if !carried {
+                let peer = name(sim, pd);
+                let port = iface_name(sim, pd, pi);
+                let mut c = RootCause::new(
+                    CauseKind::WrongVlan,
+                    &peer,
+                    format!(
+                        "le port {peer}/{port} de {me} est dans le VLAN {vlan}, qu'aucun autre port de {peer} ne porte : le poste est isolé (ni routeur ni serveur DHCP)"
+                    ),
+                );
+                c.actual = Some(format!("VLAN {vlan}"));
+                c.expected = Some("le VLAN des autres postes de ce service".to_string());
+                return Some(c);
+            }
+        }
+    }
+    None
+}
+
+/// Conflit d'adresses : l'adresse de `src`, ou celle de sa passerelle, est
+/// portée par deux machines du même réseau local (les réponses ARP de l'une
+/// détournent le trafic destiné à l'autre). Le fautif est la machine dont
+/// l'adresse a changé par rapport au réseau sain (`baseline`) ; à défaut,
+/// celle qui n'est ni `src` ni un routeur.
+pub fn ip_conflict_cause(
+    sim: &Simulation,
+    baseline: Option<&Simulation>,
+    src: DeviceId,
+) -> Option<RootCause> {
+    let dev = sim.device(src)?;
+    let n = node(sim, src)?;
+    let ip_of = |s: &Simulation, d: DeviceId, i: IfaceId| {
+        s.device(d)
+            .and_then(|x| x.iface(i))
+            .and_then(|x| x.ip)
+            .map(|x| x.addr())
+    };
+    let is_router = |d: DeviceId| {
+        sim.device(d)
+            .is_some_and(|x| matches!(x.kind, DeviceKind::Router | DeviceKind::Firewall))
+    };
+    for i in &dev.ifaces {
+        let Some(mine) = i.ip else { continue };
+        let domain = l2_domain(
+            sim,
+            src,
+            i.id,
+            L2Options {
+                vlan_aware: true,
+                honor_state: true,
+            },
+        );
+        let mut wanted = vec![mine.addr()];
+        if let Some(g) = n.gateway.filter(|g| mine.contains(*g)) {
+            wanted.push(g);
+        }
+        for addr in wanted {
+            let mut owners: Vec<(DeviceId, IfaceId)> = domain
+                .iter()
+                .copied()
+                .filter(|(d, x)| ip_of(sim, *d, *x) == Some(addr))
+                .collect();
+            if addr == mine.addr() {
+                owners.push((src, i.id));
+            }
+            owners.sort();
+            owners.dedup();
+            if owners.len() < 2 {
+                continue;
+            }
+            let changed = |(d, x): &(DeviceId, IfaceId)| {
+                baseline.is_some_and(|b| ip_of(b, *d, *x) != Some(addr))
+            };
+            let culprit = owners
+                .iter()
+                .find(|o| changed(o))
+                .or_else(|| owners.iter().find(|(d, _)| *d != src && !is_router(*d)))
+                .copied()?;
+            let (od, _) = owners.iter().copied().find(|o| *o != culprit)?;
+            let who = name(sim, culprit.0);
+            let other = name(sim, od);
+            let mut c = RootCause::new(
+                CauseKind::WrongIp,
+                &who,
+                format!(
+                    "conflit d'adresses : {who} utilise {addr}, l'adresse de {other} ; ses réponses ARP détournent le trafic destiné à {other}"
+                ),
+            );
+            c.actual = Some(format!("{addr} (déjà utilisée par {other})"));
+            c.expected = Some("une adresse libre (ou l'adresse attribuée par DHCP)".to_string());
+            if !is_router(culprit.0) {
+                c.fix = Some(format!(
+                    "ip {who} {} dhcp",
+                    iface_name(sim, culprit.0, culprit.1)
+                ));
+            }
+            return Some(c);
+        }
+    }
+    None
+}
+
 /// Cause d'un problème DHCP sur `src`, s'il y en a un : client sans adresse,
 /// ou configuration reçue d'un serveur pirate.
 pub fn dhcp_cause(sim: &Simulation, src: DeviceId) -> Option<RootCause> {
@@ -107,6 +279,11 @@ pub fn dhcp_cause(sim: &Simulation, src: DeviceId) -> Option<RootCause> {
         dev.iface(**i)
             .is_some_and(|x| x.ip.is_none() && x.link.is_some())
     })?;
+    // Le poste est-il seulement raccordé ? Sans lien, aucune demande DHCP ne
+    // part : la cause est physique, pas côté serveur.
+    if let Some(c) = access_link_cause(sim, src, iface) {
+        return Some(c);
+    }
     let domain = l2_domain(
         sim,
         src,

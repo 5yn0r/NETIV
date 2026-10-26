@@ -1,0 +1,26 @@
+id: support-03
+title: L'imprimante ne répond plus
+topic: addressing
+difficulty: easy
+track: support
+ticket: { id: "1043", requester: "Konan, accueil" }
+description: |
+  « Plus personne à l'accueil ne peut imprimer depuis hier. L'imprimante est
+  allumée et l'écran affiche « prête ». Un prestataire est passé la régler. »
+
+  Les postes impriment vers l'adresse de l'imprimante, 192.168.10.50 (port 9100) :
+  rends-la à nouveau joignable depuis ACC1.
+time_limit_minutes: 15
+topology_ref: pme
+objective: { from: ACC1, to: 192.168.10.50, service: { proto: tcp, port: 9100 } }
+faults:
+  - set_ip: { iface: "IMP:eth0", ip: "192.168.10.250/24" }
+solution:
+  cause: wrong-ip
+  device: IMP
+  explanation: |
+    Le prestataire a changé l'adresse de l'imprimante (192.168.10.250), mais les
+    files d'impression des postes l'attendent toujours à 192.168.10.50 : les travaux
+    partent vers une adresse où plus personne ne répond. Une imprimante
+    partagée doit garder une adresse fixe, connue de tous (ou une réservation DHCP).
+  commands: ["ip IMP eth0 192.168.10.50/24"]

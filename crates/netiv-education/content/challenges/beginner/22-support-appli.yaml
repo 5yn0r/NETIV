@@ -1,0 +1,26 @@
+id: support-04
+title: L'application métier est inaccessible
+topic: services
+difficulty: easy
+track: support
+ticket: { id: "1044", requester: "Mariam, comptabilité" }
+description: |
+  « L'application de comptabilité ne s'ouvre plus : la page reste blanche puis
+  affiche une erreur de connexion. Le reste fonctionne (intranet, Internet). On
+  doit clôturer le mois aujourd'hui, c'est urgent ! »
+
+  Rends l'application (appli.pme, port 8080) accessible depuis CPT1.
+time_limit_minutes: 15
+topology_ref: pme
+objective: { from: CPT1, to: 192.168.30.20, name: appli.pme, service: { proto: tcp, port: 8080 } }
+faults:
+  - stop_service: { device: APP, proto: tcp, port: 8080 }
+solution:
+  cause: service-down
+  device: APP
+  explanation: |
+    Le réseau allait bien : le nom se résolvait, le serveur APP répondait au ping.
+    Mais l'application elle-même n'écoutait plus sur le port 8080 : la connexion
+    était refusée. Quand « tout marche sauf une application », on vérifie le
+    service sur le serveur avant de chercher une panne réseau.
+  commands: ["service add APP tcp 8080 http"]

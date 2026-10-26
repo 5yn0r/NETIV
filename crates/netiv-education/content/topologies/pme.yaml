@@ -1,0 +1,108 @@
+# PME : une petite entreprise, terrain des tickets de support IT.
+#
+#   Accueil (VLAN 10) : ACC1, ACC2, IMP ─┐
+#   Compta  (VLAN 20) : CPT1, CPT2 ───── SW1 ══ R1 ── SW2 ── SRV (DHCP, DNS, intranet)
+#                                              │         └── APP (application métier)
+#                                              └── FAI ── WEB (site Internet)
+#
+# Les postes obtiennent leur adresse par DHCP (relayé par R1 vers SRV) ; SRV
+# est aussi le serveur DNS de l'entreprise (zone « pme »).
+#
+#   netiv> ping ACC1 intranet.pme        # résolution DNS, puis ping
+#   netiv> curl CPT1 appli.pme 8080      # l'application métier
+#   netiv> curl ACC1 imprimante.pme 9100 # l'imprimante
+network: { name: pme, seed: 41 }
+devices:
+  - name: ACC1
+    type: host
+    interfaces: [{ name: eth0, ip: dhcp }]
+  - name: ACC2
+    type: host
+    interfaces: [{ name: eth0, ip: dhcp }]
+  - name: IMP
+    type: host
+    role: iot
+    interfaces: [{ name: eth0, ip: 192.168.10.50/24 }]
+    gateway: 192.168.10.1
+    services: [{ proto: tcp, port: 9100, name: impression }]
+  - name: CPT1
+    type: host
+    interfaces: [{ name: eth0, ip: dhcp }]
+  - name: CPT2
+    type: host
+    interfaces: [{ name: eth0, ip: dhcp }]
+
+  # Switch d'étage : un VLAN par service, une patte de R1 par VLAN.
+  - name: SW1
+    type: switch
+    interfaces:
+      - { name: p1, vlan: 10 }
+      - { name: p2, vlan: 10 }
+      - { name: p3, vlan: 10 }
+      - { name: p4, vlan: 20 }
+      - { name: p5, vlan: 20 }
+      - { name: r10, vlan: 10 }
+      - { name: r20, vlan: 20 }
+
+  - name: R1
+    type: router
+    interfaces:
+      - { name: eth0, ip: 192.168.10.1/24, dhcp_relay: 192.168.30.10 }
+      - { name: eth1, ip: 192.168.20.1/24, dhcp_relay: 192.168.30.10 }
+      - { name: eth2, ip: 192.168.30.1/24 }
+      - { name: eth3, ip: 203.0.113.2/30 }
+    routes: [{ dest: 0.0.0.0/0, via: 203.0.113.1 }]
+
+  # Salle serveurs.
+  - name: SW2
+    type: switch
+    ports: 3
+  - name: SRV
+    type: server
+    interfaces: [{ name: eth0, ip: 192.168.30.10/24 }]
+    gateway: 192.168.30.1
+    services: [{ proto: tcp, port: 80, name: http }]
+    dhcp:
+      pools:
+        - { network: 192.168.10.0/24, range: 192.168.10.100-192.168.10.150, gateway: 192.168.10.1, dns: 192.168.30.10 }
+        - { network: 192.168.20.0/24, range: 192.168.20.100-192.168.20.150, gateway: 192.168.20.1, dns: 192.168.30.10 }
+    dns_server:
+      records:
+        intranet.pme: 192.168.30.10
+        appli.pme: 192.168.30.20
+        imprimante.pme: 192.168.10.50
+        www.exemple.ci: 198.51.100.10
+  - name: APP
+    type: server
+    interfaces: [{ name: eth0, ip: 192.168.30.20/24 }]
+    gateway: 192.168.30.1
+    services: [{ proto: tcp, port: 8080, name: http }]
+
+  # Accès Internet.
+  - name: FAI
+    type: router
+    role: internet
+    interfaces:
+      - { name: eth0, ip: 203.0.113.1/30 }
+      - { name: eth1, ip: 198.51.100.1/24 }
+    routes: [{ dest: 192.168.0.0/16, via: 203.0.113.2 }]
+  - name: WEB
+    type: server
+    role: internet
+    interfaces: [{ name: eth0, ip: 198.51.100.10/24 }]
+    gateway: 198.51.100.1
+    services: [{ proto: tcp, port: 80, name: http }]
+
+links:
+  - { a: "ACC1:eth0", b: "SW1:p1" }
+  - { a: "ACC2:eth0", b: "SW1:p2" }
+  - { a: "IMP:eth0", b: "SW1:p3" }
+  - { a: "CPT1:eth0", b: "SW1:p4" }
+  - { a: "CPT2:eth0", b: "SW1:p5" }
+  - { a: "R1:eth0", b: "SW1:r10" }
+  - { a: "R1:eth1", b: "SW1:r20" }
+  - { a: "R1:eth2", b: "SW2:port1" }
+  - { a: "SRV:eth0", b: "SW2:port2" }
+  - { a: "APP:eth0", b: "SW2:port3" }
+  - { a: "R1:eth3", b: "FAI:eth0" }
+  - { a: "FAI:eth1", b: "WEB:eth0" }

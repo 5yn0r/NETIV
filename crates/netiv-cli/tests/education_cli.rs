@@ -87,11 +87,11 @@ fn completing_every_challenge_unlocks_every_badge_and_the_top_level() {
         );
     }
     assert_eq!(s.profile().badges.len(), netiv_education::BADGES.len());
-    // 6×100 + 6×150 + 6×200 = 2700 XP → niveau 6.
-    assert_eq!(s.profile().xp(), 2_700);
+    // 11×100 + 10×150 + 7×200 = 4000 XP → niveau 6.
+    assert_eq!(s.profile().xp(), 4_000);
     let dash = run(&mut s, "dashboard");
     assert!(dash.contains("Niveau 6 « Expert »"), "{dash}");
-    assert!(dash.contains("Challenges réussis : 18 / 21"), "{dash}");
+    assert!(dash.contains("Challenges réussis : 28 / 31"), "{dash}");
     assert!(dash.contains("100%"), "{dash}");
     let badges = run(&mut s, "badges");
     assert_eq!(badges.matches('🏅').count(), 6, "{badges}");
@@ -283,12 +283,12 @@ fn a_better_second_attempt_only_adds_the_difference() {
 fn challenge_list_filters_by_topic_and_difficulty() {
     let (mut s, _) = session();
     let all = run(&mut s, "challenge list");
-    assert_eq!(all.lines().count(), 1 + 18);
+    assert_eq!(all.lines().count(), 1 + 28);
     let routing = run(&mut s, "challenge list routing");
     assert_eq!(routing.lines().count(), 1 + 4, "{routing}");
     assert!(routing.lines().skip(1).all(|l| l.contains("Routage")));
     let hard = run(&mut s, "challenge list difficile");
-    assert_eq!(hard.lines().count(), 1 + 6, "{hard}");
+    assert_eq!(hard.lines().count(), 1 + 7, "{hard}");
     assert!(run(&mut s, "challenge list zzz").contains("aucun challenge"));
 }
 

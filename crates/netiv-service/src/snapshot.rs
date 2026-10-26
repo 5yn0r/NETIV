@@ -87,6 +87,7 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
             "remaining_secs": c.remaining_secs,
             "score": c.score,
             "score_detail": c.score_detail,
+            "ticket": c.ticket,
         })
     });
     let edit_lock = session.edit_lock();

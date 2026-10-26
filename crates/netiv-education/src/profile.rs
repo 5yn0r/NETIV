@@ -621,7 +621,8 @@ mod tests {
             text.contains("Niveau 2 « Technicien » — XP : 200 / 400"),
             "{text}"
         );
-        assert!(text.contains("Adressage") && text.contains("66%"), "{text}");
+        // Adressage : 2 réussis sur 6 (dont 3 tickets de support).
+        assert!(text.contains("Adressage") && text.contains("33%"), "{text}");
         let order: Vec<usize> = [
             "Physique",
             "Adressage",
@@ -638,7 +639,7 @@ mod tests {
             "ordre des thèmes : {text}"
         );
         assert!(text.contains("Routage") && text.contains("0%"), "{text}");
-        assert!(text.contains("Challenges réussis : 2 / 21"), "{text}");
+        assert!(text.contains("Challenges réussis : 2 / 31"), "{text}");
         assert!(text.contains("Network Beginner"), "{text}");
     }
 

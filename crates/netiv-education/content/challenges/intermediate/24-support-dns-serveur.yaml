@@ -1,0 +1,26 @@
+id: support-06
+title: Plus aucun nom ne marche
+topic: services
+difficulty: medium
+track: support
+ticket: { id: "1046", requester: "Fatou, direction" }
+description: |
+  « Depuis la mise à jour du serveur cette nuit, personne n'arrive plus à ouvrir
+  l'intranet ni l'application métier par leur nom. Les postes ont bien une
+  adresse et le réseau semble fonctionner. »
+
+  Rends l'intranet (intranet.pme, port 80) de nouveau accessible depuis CPT1.
+time_limit_minutes: 20
+topology_ref: pme
+objective: { from: CPT1, to: 192.168.30.10, name: intranet.pme, service: { proto: tcp, port: 80 } }
+faults:
+  - dns_server_down: { device: SRV }
+solution:
+  cause: dns-server-down
+  device: SRV
+  explanation: |
+    Tous les postes interrogent le même serveur DNS : SRV. Après la mise à jour, son
+    service DNS n'avait pas redémarré. Le réseau allait bien (le serveur répondait au
+    ping), mais plus aucun nom n'était traduit en adresse. Un symptôme qui touche
+    tout le monde en même temps pointe vers un service central.
+  commands: ["dns server SRV on"]

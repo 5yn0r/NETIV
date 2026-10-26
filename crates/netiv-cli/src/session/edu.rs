@@ -6,7 +6,7 @@ use std::path::Path;
 use netiv_education::builtin;
 use netiv_education::learn::{self, LearningPath};
 use netiv_education::run::{AnswerOutcome, CheckOutcome, RunError, Score, parse_cause};
-use netiv_education::{Challenge, ChallengeRun, Course};
+use netiv_education::{Challenge, ChallengeRun, Course, Ticket};
 
 use super::*;
 
@@ -36,6 +36,8 @@ pub struct ChallengeInfo {
     /// Détail du score final (diagnostic, correction, temps, indices, XP),
     /// pour un challenge comme pour un cyber range.
     pub score_detail: Option<Score>,
+    /// Ticket de support qui présente le challenge, s'il y en a un.
+    pub ticket: Option<Ticket>,
 }
 
 const LOCKED: &str = "indisponible pendant un challenge : c'est à toi de trouver (« hint » si tu bloques, −10 points)";
@@ -76,6 +78,7 @@ impl Session {
                 remaining_secs: r.remaining_secs(now),
                 score: r.score().map(|s| s.total),
                 score_detail: r.score().cloned(),
+                ticket: c.ticket.clone(),
             });
         }
         self.range_run.as_ref().map(|r| {
@@ -92,6 +95,7 @@ impl Session {
                 remaining_secs: r.remaining_secs(now),
                 score: None,
                 score_detail: r.score().cloned(),
+                ticket: None,
             }
         })
     }

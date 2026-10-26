@@ -1,0 +1,32 @@
+id: support-08
+title: Le nouveau poste n'a pas d'adresse
+topic: services
+difficulty: medium
+track: support
+ticket: { id: "1048", requester: "Mariam, comptabilité" }
+description: |
+  « On vient d'installer le poste de notre nouveau collègue (CPT2) à la compta.
+  Il affiche « aucune connexion », alors que le câble est branché et que mon
+  poste à côté (CPT1) fonctionne très bien. »
+
+  Rends à CPT2 l'accès au serveur de l'entreprise (192.168.30.10).
+time_limit_minutes: 20
+topology_ref: pme
+objective: { from: CPT2, to: 192.168.30.10 }
+faults:
+  - dhcp_pools:
+      device: SRV
+      pools:
+        - { network: 192.168.10.0/24, range: 192.168.10.100-192.168.10.150, gateway: 192.168.10.1, dns: 192.168.30.10 }
+        - { network: 192.168.20.0/24, range: 192.168.20.100-192.168.20.100, gateway: 192.168.20.1, dns: 192.168.30.10 }
+solution:
+  cause: dhcp-pool-exhausted
+  device: SRV
+  explanation: |
+    La plage DHCP de la compta (192.168.20.0/24) ne contenait qu'une seule adresse,
+    déjà prise par CPT1. Le serveur n'avait plus rien à donner à CPT2. On élargit la
+    plage (ici .100 à .150), puis le poste redemande une adresse.
+  commands:
+    - "dhcp pool del SRV 192.168.20.0/24"
+    - "dhcp pool add SRV 192.168.20.0/24 192.168.20.100-192.168.20.150 gw 192.168.20.1 dns 192.168.30.10"
+    - "dhcp CPT2"
