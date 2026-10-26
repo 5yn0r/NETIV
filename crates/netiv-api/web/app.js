@@ -34,6 +34,20 @@
     }
     return el;
   }
+  // Icônes : tracés repris de Lucide (licence ISC), la famille d'icônes
+  // d'ITEtude. Le HTML statique utilise les mêmes.
+  const ICONS = {
+    x: ['M18 6 6 18', 'm6 6 12 12'],
+    first: ['M19 20 9 12l10-8z', 'M5 19V5'],
+    prev: ['m15 18-6-6 6-6'],
+    next: ['m9 18 6-6-6-6'],
+    play: ['M6 3l14 9-14 9z'],
+    pause: ['M7 4h3v16H7z', 'M14 4h3v16h-3z'],
+  };
+  function icon(name) {
+    return s('svg', { class: 'ic', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ICONS[name].map((d) => s('path', { d })));
+  }
+
   function clear(el) {
     while (el.firstChild) el.removeChild(el.firstChild);
     return el;
@@ -1339,7 +1353,7 @@
     return el;
   }
 
-  const del = (label, onclick) => h('button', { type: 'button', class: 'icon del', 'aria-label': label, title: label, onclick }, '✕');
+  const del = (label, onclick) => h('button', { type: 'button', class: 'icon del', 'aria-label': label, title: label, onclick }, icon('x'));
 
   /** Modifie l'équipement `name` (copie) et applique. */
   function editDevice(name, mutate) {
@@ -1844,10 +1858,10 @@
     if (!j) return;
     const total = j.steps.length;
     root.append(h('div', { class: 'player', role: 'group', 'aria-label': 'Lecteur' },
-      h('button', { type: 'button', id: 'pl-first', title: 'Début', 'aria-label': 'Début', onclick: () => gotoStep(-1) }, '⏮'),
-      h('button', { type: 'button', id: 'pl-prev', title: 'Étape précédente (←)', 'aria-label': 'Étape précédente', onclick: () => gotoStep(state.step - 1) }, '◀'),
-      h('button', { type: 'button', id: 'pl-play', class: 'primary', title: 'Lecture / pause (espace)', 'aria-label': 'Lecture', onclick: togglePlay }, state.playing ? '⏸' : '▶'),
-      h('button', { type: 'button', id: 'pl-next', title: 'Étape suivante (→)', 'aria-label': 'Étape suivante', onclick: () => gotoStep(state.step + 1) }, '▶|'),
+      h('button', { type: 'button', id: 'pl-first', class: 'icon', title: 'Début', 'aria-label': 'Début', onclick: () => gotoStep(-1) }, icon('first')),
+      h('button', { type: 'button', id: 'pl-prev', class: 'icon', title: 'Étape précédente (←)', 'aria-label': 'Étape précédente', onclick: () => gotoStep(state.step - 1) }, icon('prev')),
+      h('button', { type: 'button', id: 'pl-play', class: 'primary icon', title: 'Lecture / pause (espace)', 'aria-label': state.playing ? 'Pause' : 'Lecture', onclick: togglePlay }, icon(state.playing ? 'pause' : 'play')),
+      h('button', { type: 'button', id: 'pl-next', class: 'icon', title: 'Étape suivante (→)', 'aria-label': 'Étape suivante', onclick: () => gotoStep(state.step + 1) }, icon('next')),
       h('select', { id: 'pl-speed', 'aria-label': 'Vitesse' }, [['1100', 'lent'], ['650', 'normal'], ['250', 'rapide']].map(([v, l]) => h('option', { value: v, selected: v === '650' }, l))),
       h('span', { class: 'count', id: 'pl-count' }, `${Math.max(0, state.step + 1)}/${total}`),
     ));
@@ -1929,7 +1943,7 @@
     const speed = +($('#pl-speed') || { value: 650 }).value;
     state.playing = setInterval(() => gotoStep(state.step + 1), speed);
     const b = $('#pl-play');
-    if (b) { b.textContent = '⏸'; b.setAttribute('aria-label', 'Pause'); }
+    if (b) { b.replaceChildren(icon('pause')); b.setAttribute('aria-label', 'Pause'); }
     gotoStep(state.step + 1);
   }
 
@@ -1937,7 +1951,7 @@
     if (state.playing) clearInterval(state.playing);
     state.playing = null;
     const b = $('#pl-play');
-    if (b) { b.textContent = '▶'; b.setAttribute('aria-label', 'Lecture'); }
+    if (b) { b.replaceChildren(icon('play')); b.setAttribute('aria-label', 'Lecture'); }
   }
 
   // ---- trace
@@ -2133,13 +2147,18 @@
   const LAB_LAYOUT = window.NETIV_LAYOUT === 'lab';
   const UI_KEY = LAB_LAYOUT ? 'netiv.ui.lab' : 'netiv.ui';
   const UI_DEFAULTS = {
-    sideW: 280, panelW: LAB_LAYOUT ? 400 : 380, consoleH: 200,
+    sideW: 280, panelW: 400, consoleH: 200,
     hideSide: LAB_LAYOUT, hidePanel: false, hideConsole: false, focus: false,
     font: 1, density: 'normal',
   };
   state.ui = { ...UI_DEFAULTS, ...(store(UI_KEY) || {}) };
-  // Intégrée dans une page (iframe) : en-tête compact.
-  if (window.NETIV_EMBEDDED) document.body.classList.add('embedded');
+  // Intégrée dans une page (iframe) : la page hôte affiche déjà le logo et le
+  // titre. L'en-tête de NETIV disparaît et ses boutons rejoignent la barre du
+  // réseau (une ligne de moins, pas de logo en double).
+  if (window.NETIV_EMBEDDED) {
+    document.body.classList.add('embedded');
+    $('.stage-bar').append($('.top-actions'));
+  }
   if (LAB_LAYOUT) document.body.classList.add('layout-lab');
 
   /** Bornes de chaque taille, recalculées selon la fenêtre. */

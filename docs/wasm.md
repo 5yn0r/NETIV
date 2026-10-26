@@ -124,7 +124,8 @@ NETIV → page hôte (`source: 'netiv'`) :
 catalogue de gauche est replié et l'onglet Défi s'ouvre au démarrage du défi. L'élève peut
 toujours réafficher le catalogue (bouton Affichage). Ces réglages d'affichage sont mémorisés à
 part (`netiv.ui.lab`) : ils ne modifient pas ceux de l'interface complète. En mode intégré
-(`host=1`), l'en-tête de NETIV est compact, et tient sur une ligne sur téléphone.
+(`host=1`), la page hôte affiche déjà le logo et le titre : l'en-tête de NETIV est retiré, et
+ses boutons (zones, Affichage, aide, progression, thème) rejoignent la barre du réseau.
 
 Un profil illisible ou trop récent est ignoré : NETIV démarre avec un profil neuf et l'écrit
 dans la console. Il ne bloque jamais l'élève.
