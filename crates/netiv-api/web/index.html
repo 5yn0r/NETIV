@@ -105,7 +105,7 @@
         <label class="narrow">port <input id="tb-port" type="number" min="1" max="65535" placeholder="80" aria-label="Port (vide : ping)"></label>
         <label class="check"><input id="tb-stepmode" type="checkbox"> pas à pas</label>
         <button id="tb-go" class="primary" type="button">Envoyer</button>
-        <span class="sep" aria-hidden="true"></span>
+        <span id="tb-sep" class="sep" aria-hidden="true"></span>
         <button id="tb-step" type="button" title="Exécuter un seul événement">Pas à pas</button>
         <button id="tb-run" type="button" title="Exécuter tous les événements en attente">Tout exécuter</button>
       </div>
@@ -145,6 +145,7 @@
           <button id="z-out" type="button" title="Dézoomer  −" aria-label="Dézoomer">−</button>
           <button id="z-fit" type="button" title="Tout afficher  0" aria-label="Tout afficher">⤢</button>
           <button id="z-relayout" type="button" title="Réorganiser les équipements" aria-label="Réorganiser les équipements">↻</button>
+          <button id="z-focus" type="button" aria-pressed="false" title="Schéma seul (agrandir)  F" aria-label="Schéma seul"><svg class="i-max" viewBox="0 0 20 20" aria-hidden="true"><path d="M12 3h5v5M8 17H3v-5M17 3l-5.5 5.5M3 17l5.5-5.5"/></svg><svg class="i-restore" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 12h5v5M17 8h-5V3M8 12l-5 5M12 8l5-5"/></svg></button>
           <span id="z-level" class="zoom-level" aria-live="polite">100 %</span>
         </div>
         <ul class="legend" aria-label="Légende">
@@ -157,6 +158,14 @@
       <div id="split-console" class="splitter h" role="separator" aria-orientation="horizontal" aria-label="Hauteur de la console (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
       <section class="console" aria-label="Console">
+        <div class="console-head">
+          <span class="title">Console</span>
+          <div class="frame-tools" role="group" aria-label="Taille de la console">
+            <button id="console-min" type="button" title="Réduire la console" aria-label="Réduire la console"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 14h12"/></svg></button>
+            <button id="console-max" type="button" aria-pressed="false" title="Agrandir la console" aria-label="Agrandir la console"><svg class="i-max" viewBox="0 0 20 20" aria-hidden="true"><path d="M12 3h5v5M8 17H3v-5M17 3l-5.5 5.5M3 17l5.5-5.5"/></svg><svg class="i-restore" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 12h5v5M17 8h-5V3M8 12l-5 5M12 8l5-5"/></svg></button>
+            <button id="console-hide" type="button" title="Masquer la console (bouton Console en haut pour la réafficher)" aria-label="Masquer la console"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg></button>
+          </div>
+        </div>
         <div id="console-out" class="console-out" role="log" aria-live="polite" aria-label="Sortie de la console" tabindex="0"></div>
         <form id="console-form" class="console-form" autocomplete="off">
           <span class="prompt" aria-hidden="true">netiv&gt;</span>
@@ -168,12 +177,18 @@
     <div id="split-panel" class="splitter v" role="separator" aria-orientation="vertical" aria-controls="panel" aria-label="Largeur du panneau de détails (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
     <section id="panel" class="panel" aria-label="Détails">
+      <div class="panel-head">
       <div class="tabs" role="tablist" aria-label="Panneaux">
         <button role="tab" data-tab="device" aria-selected="true">Appareil</button>
         <button role="tab" data-tab="journey" aria-selected="false">Parcours</button>
         <button role="tab" data-tab="trace" aria-selected="false">Trace</button>
         <button role="tab" data-tab="analysis" aria-selected="false">Analyse</button>
         <button role="tab" data-tab="challenge" aria-selected="false">Défi</button>
+      </div>
+      <div class="frame-tools" role="group" aria-label="Taille du panneau">
+        <button id="panel-wide" type="button" aria-pressed="false" title="Élargir le panneau" aria-label="Élargir le panneau"><svg class="i-max" viewBox="0 0 20 20" aria-hidden="true"><path d="M12 3h5v5M8 17H3v-5M17 3l-5.5 5.5M3 17l5.5-5.5"/></svg><svg class="i-restore" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 12h5v5M17 8h-5V3M8 12l-5 5M12 8l5-5"/></svg></button>
+        <button id="panel-hide" type="button" title="Masquer le panneau (bouton Détails en haut pour le réafficher)" aria-label="Masquer le panneau"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg></button>
+      </div>
       </div>
       <div id="tab-device" class="tab-body" role="tabpanel"></div>
       <div id="tab-journey" class="tab-body" role="tabpanel" hidden></div>

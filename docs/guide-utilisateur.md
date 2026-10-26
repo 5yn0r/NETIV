@@ -129,7 +129,8 @@ relais oublié et un serveur DHCP pirate.
 - **Catalogue** (à gauche) : réseaux livrés, bibliothèque `labs/`, défis, cyber ranges, générateurs.
 - **Schéma** (au centre) : clique un équipement pour voir ses tables. Glisse-le pour le déplacer.
   Molette pour zoomer, glisser le fond pour se déplacer ; boutons + − ⤢ (tout afficher) ↻ (réorganiser).
-- **Barre d'outils** : ping ou requête TCP (remplir le port) d'un clic ; « pas à pas » pour suivre chaque événement.
+- **Barre d'outils** : ping ou requête TCP (remplir le port) d'un clic ; « pas à pas » pour suivre chaque événement
+  (les boutons « Pas à pas » et « Tout exécuter » apparaissent quand des événements attendent).
 - **Console** : les mêmes commandes que le terminal, avec historique (↑ ↓).
 - **Panneau de détails** : Appareil, **Parcours** (rejoue un échange étape par étape, avec le paquet
   animé sur le schéma : ◀ ▶ lecture, ← → espace), Trace filtrable, Analyse (santé, sécurité, what-if,
@@ -139,10 +140,12 @@ relais oublié et un serveur DHCP pirate.
 
 | Action | Souris | Clavier |
 |---|---|---|
-| Agrandir / réduire une zone | glisser son bord | Tab jusqu'au bord, puis ← → ou ↑ ↓ (Maj : pas plus grand) |
+| Agrandir / réduire une zone | glisser la poignée (petite barre sur son bord) | Tab jusqu'à la poignée, puis ← → ou ↑ ↓ (Maj : pas plus grand) |
+| Agrandir d'un clic, puis rétablir | boutons ⤢ dans la barre de la console et à côté des onglets du panneau | — |
+| Réduire la console au minimum | bouton ▁ de la console | — |
 | Revenir à la taille par défaut | double-clic sur le bord | Entrée sur le bord |
-| Masquer le catalogue / les détails / la console | boutons en haut à droite | `[` `]` `` ` `` |
-| Schéma seul | bouton ⛶ | `F` |
+| Masquer le catalogue / les détails / la console | boutons en haut à droite, ou ✕ sur la console et le panneau | `[` `]` `` ` `` |
+| Schéma seul | bouton ⤢ du schéma, ou ⛶ en haut | `F` |
 | Zoom du schéma | molette, boutons + − ⤢ | `+` `−` `0` |
 | Taille du texte, densité, hauteur de console | menu **Affichage** | — |
 | Mode Construire (éditeur) | bouton **✎ Construire** | `B` |
@@ -150,6 +153,10 @@ relais oublié et un serveur DHCP pirate.
 
 La disposition, le zoom et les positions des équipements sont mémorisés **dans ton navigateur**
 (par réseau). « Réinitialiser la disposition » dans le menu Affichage remet tout à zéro.
+
+Dans un **lab intégré** (disposition « lab », par exemple sur ITEtude), le catalogue est replié,
+l'onglet **Défi** passe en premier, et « Construire » n'apparaît pas pendant l'épreuve. Ces
+réglages d'affichage sont mémorisés à part de ceux du bac à sable.
 
 ### Sécurité de l'interface
 

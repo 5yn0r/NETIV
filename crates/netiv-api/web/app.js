@@ -255,7 +255,8 @@
     const locked = state.snap && state.snap.editable === false;
     t.setAttribute('aria-pressed', String(on));
     t.disabled = !state.snap || (!on && locked);
-    t.title = locked && !on ? (state.snap.edit_lock || '') : 'Construire ou modifier ce réseau  B';
+    t.hidden = !on && locked;
+    t.title = 'Construire ou modifier ce réseau  B';
   }
 
   async function createLab(body) {
@@ -866,7 +867,7 @@
     const snap = state.snap;
     $('#lab-title').textContent = snap && snap.name ? snap.name : 'Aucun réseau';
     $('#lab-meta').textContent = snap && snap.name
-      ? `${snap.devices.length} équipements · ${snap.links.length} câbles · t = ${snap.time} · ${snap.trace_len} événements${snap.pending ? ` · ${snap.pending} en attente` : ''}`
+      ? `${snap.devices.length} équipements · ${snap.links.length} câbles · t = ${snap.time}${snap.pending ? ` · ${snap.pending} en attente` : ''}`
       : '';
     renderToolbar();
     renderCanvas();
@@ -874,6 +875,8 @@
 
   function renderToolbar() {
     const snap = state.snap;
+    const pending = !!(snap && snap.pending);
+    for (const id of ['#tb-sep', '#tb-step', '#tb-run']) $(id).hidden = !pending;
     const src = $('#tb-src'), dst = $('#tb-dst');
     const keepSrc = src.value, keepDst = dst.value;
     clear(src); clear(dst);
@@ -2137,6 +2140,7 @@
   state.ui = { ...UI_DEFAULTS, ...(store(UI_KEY) || {}) };
   // Intégrée dans une page (iframe) : en-tête compact.
   if (window.NETIV_EMBEDDED) document.body.classList.add('embedded');
+  if (LAB_LAYOUT) document.body.classList.add('layout-lab');
 
   /** Bornes de chaque taille, recalculées selon la fenêtre. */
   function bounds(key) {
@@ -2169,6 +2173,16 @@
     $('#vb-panel').setAttribute('aria-pressed', String(!ui.hidePanel && !ui.focus));
     $('#vb-console').setAttribute('aria-pressed', String(!ui.hideConsole && !ui.focus));
     $('#vb-focus').setAttribute('aria-pressed', String(ui.focus));
+    $('#z-focus').setAttribute('aria-pressed', String(ui.focus));
+    $('#z-focus').title = ui.focus ? 'Rétablir les panneaux  F' : 'Schéma seul (agrandir)  F';
+    const consoleMax = atMax('consoleH');
+    $('#console-max').setAttribute('aria-pressed', String(consoleMax));
+    $('#console-max').title = consoleMax ? 'Rétablir la taille de la console' : 'Agrandir la console';
+    $('#console-max').setAttribute('aria-label', $('#console-max').title);
+    const panelMax = atMax('panelW');
+    $('#panel-wide').setAttribute('aria-pressed', String(panelMax));
+    $('#panel-wide').title = panelMax ? 'Rétablir la largeur du panneau' : 'Élargir le panneau';
+    $('#panel-wide').setAttribute('aria-label', $('#panel-wide').title);
     for (const b of $$('#font-seg button')) b.setAttribute('aria-pressed', String(+b.dataset.font === ui.font));
     for (const b of $$('#density-seg button')) b.setAttribute('aria-pressed', String(b.dataset.density === ui.density));
     $('#console-size').value = String(clampSize('consoleH', ui.consoleH));
@@ -2185,6 +2199,17 @@
     Object.assign(state.ui, patch);
     applyUi();
     store(UI_KEY, state.ui);
+  }
+
+  /** La taille `key` est-elle à son maximum ? */
+  function atMax(key) {
+    return clampSize(key, state.ui[key]) >= Math.round(bounds(key)[1]) - 1;
+  }
+
+  /** Agrandit un cadre au maximum, ou le rétablit à sa taille par défaut. */
+  function toggleMax(key) {
+    const show = key === 'consoleH' ? { hideConsole: false } : { hidePanel: false };
+    setUi({ ...show, focus: false, [key]: atMax(key) ? UI_DEFAULTS[key] : bounds(key)[1] });
   }
 
   /** Affiche / masque une zone. Quitter le mode « schéma seul » d'abord. */
@@ -2256,6 +2281,14 @@
     $('#vb-panel').addEventListener('click', () => toggleZone('hidePanel'));
     $('#vb-console').addEventListener('click', () => toggleZone('hideConsole'));
     $('#vb-focus').addEventListener('click', () => setUi({ focus: !state.ui.focus }));
+    $('#z-focus').addEventListener('click', () => setUi({ focus: !state.ui.focus }));
+    $('#console-max').addEventListener('click', () => toggleMax('consoleH'));
+    $('#console-min').addEventListener('click', () => setUi({ consoleH: bounds('consoleH')[0], hideConsole: false }));
+    $('#console-hide').addEventListener('click', () => setUi({ hideConsole: true }));
+    $('#panel-wide').addEventListener('click', () => toggleMax('panelW'));
+    $('#panel-hide').addEventListener('click', () => setUi({ hidePanel: true }));
+    // Les bornes dépendent de la fenêtre : recalculer l'état des boutons.
+    window.addEventListener('resize', applyUi);
 
     for (const b of $$('#font-seg button')) b.addEventListener('click', () => setUi({ font: +b.dataset.font }));
     for (const b of $$('#density-seg button')) b.addEventListener('click', () => setUi({ density: b.dataset.density }));
