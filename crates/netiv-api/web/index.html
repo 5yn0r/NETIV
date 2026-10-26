@@ -136,7 +136,7 @@
       <div id="build-issues" class="issues" role="status" aria-live="polite" hidden></div>
 
       <div class="canvas-wrap">
-        <svg id="canvas" role="img" aria-label="Schéma du réseau" tabindex="0"></svg>
+        <svg id="canvas" role="group" aria-label="Schéma du réseau : cliquer un équipement ou un câble pour le détail" tabindex="0"></svg>
         <div id="canvas-empty" class="empty">
           <p id="canvas-empty-text"><strong>Choisis un lab</strong> dans le catalogue pour voir son schéma.</p>
         </div>
@@ -157,7 +157,7 @@
       <div id="split-console" class="splitter h" role="separator" aria-orientation="horizontal" aria-label="Hauteur de la console (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
       <section class="console" aria-label="Console">
-        <div id="console-out" class="console-out" role="log" aria-live="polite"></div>
+        <div id="console-out" class="console-out" role="log" aria-live="polite" aria-label="Sortie de la console" tabindex="0"></div>
         <form id="console-form" class="console-form" autocomplete="off">
           <span class="prompt" aria-hidden="true">netiv&gt;</span>
           <input id="console-in" type="text" spellcheck="false" aria-label="Commande NETIV" placeholder="ping PC1 192.168.2.10   (tape « help »)">
