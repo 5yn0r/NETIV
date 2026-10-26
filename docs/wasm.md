@@ -94,6 +94,7 @@ garde son propre CSS, et la page hôte ne charge rien tant que l'iframe n'est pa
 |---|---|
 | `host=1` | mode intégré : attend le message `init` de la page hôte, ne garde rien dans le stockage local |
 | `challenge=<id>`, `range=<id>`, `builtin=<nom>` | épreuve ou réseau ouvert au démarrage (sans `host=1`) |
+| `layout=lab` | disposition « lab » (sans `host=1`) : voir ci-dessous |
 
 Sans `host=1` (démo), le profil est gardé dans le `localStorage` du navigateur (`netiv.profile`).
 
@@ -106,7 +107,7 @@ Page hôte → NETIV (`source: 'netiv-host'`) :
 
 | `type` | Champs | Rôle |
 |---|---|---|
-| `init` | `profile?`, `profileName?`, `start?`, `labs?` | à envoyer en réponse à `ready`. `start` : par exemple `{ challenge: 'beginner-01' }`, `{ range: 'range-01' }`, `{ builtin: 'office' }`, `{ yaml: texte }` |
+| `init` | `profile?`, `profileName?`, `start?`, `labs?`, `layout?` | à envoyer en réponse à `ready`. `start` : par exemple `{ challenge: 'beginner-01' }`, `{ range: 'range-01' }`, `{ builtin: 'office' }`, `{ yaml: texte }`. `layout: 'lab'` : disposition « lab » |
 | `export-lab` | `requestId`, `labId?` | demande le `.netiv` du lab affiché (ou de `labId`) |
 
 NETIV → page hôte (`source: 'netiv'`) :
@@ -118,6 +119,12 @@ NETIV → page hôte (`source: 'netiv'`) :
 | `challenge-finished` | `kind`, `id`, `title`, `score`, `scoreDetail`, `hintsUsed`, `profile` | une épreuve vient d'être réussie |
 | `lab` | `requestId`, `id`, `text`, `error?` | réponse à `export-lab` |
 | `error` | `error` | le moteur n'a pas pu démarrer |
+
+**Disposition « lab »** (`layout: 'lab'`) : pour une épreuve imposée par la page hôte, le
+catalogue de gauche est replié et l'onglet Défi s'ouvre au démarrage du défi. L'élève peut
+toujours réafficher le catalogue (bouton Affichage). Ces réglages d'affichage sont mémorisés à
+part (`netiv.ui.lab`) : ils ne modifient pas ceux de l'interface complète. En mode intégré
+(`host=1`), l'en-tête de NETIV est compact, et tient sur une ligne sur téléphone.
 
 Un profil illisible ou trop récent est ignoré : NETIV démarre avec un profil neuf et l'écrit
 dans la console. Il ne bloque jamais l'élève.

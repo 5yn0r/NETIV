@@ -12,7 +12,8 @@
  *   et reçoit la progression (voir « Protocole » dans docs/wasm.md).
  *
  * Messages reçus de la page hôte (même origine uniquement) :
- *   { source: 'netiv-host', type: 'init', profile?, profileName?, start?, labs? }
+ *   { source: 'netiv-host', type: 'init', profile?, profileName?, start?, labs?, layout? }
+ *     layout : 'lab' (épreuve imposée : catalogue replié, panneau Défi ouvert)
  *   { source: 'netiv-host', type: 'export-lab', requestId }
  * Messages envoyés à la page hôte :
  *   { source: 'netiv', type: 'ready', version }            moteur prêt (attend « init » si host=1)
@@ -132,6 +133,8 @@ async function start() {
   }
   window.netivEngine = watch(engine);
   window.NETIV_START = options.start || startFromUrl();
+  window.NETIV_LAYOUT = options.layout || params.get('layout') || undefined;
+  window.NETIV_EMBEDDED = hosted;
 
   if (hosted) {
     window.addEventListener('message', (e) => {

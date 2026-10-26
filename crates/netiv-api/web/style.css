@@ -124,6 +124,12 @@ pre { margin: 0; font: 0.8571rem/1.45 var(--mono); white-space: pre-wrap; word-b
 .tag { color: var(--muted); font-size: 0.8571rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top-actions { display: flex; gap: 8px; align-items: center; }
 
+/* Intégrée dans une page hôte (iframe) : la page affiche déjà le titre. */
+body.embedded .top { padding: 4px 12px; }
+body.embedded .tag { display: none; }
+body.embedded .brand strong { font-size: 1rem; }
+body.embedded .logo { width: 22px; height: 22px; }
+
 .banner { padding: 8px 16px; font-weight: 600; }
 .banner.error { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: var(--bad); border-bottom: 1px solid var(--bad); }
 .banner.info { background: var(--accent-soft); color: var(--text); border-bottom: 1px solid var(--line); }
@@ -500,3 +506,11 @@ label.inline { display: inline-flex; align-items: center; gap: 4px; color: var(-
 .create-row { margin-bottom: 6px; }
 
 [hidden] { display: none !important; }
+
+/* ---- intégrée sur téléphone : en-tête sur une seule ligne ---- */
+@media (max-width: 760px) {
+  body.embedded .top { flex-wrap: nowrap; padding: 4px 8px; gap: 6px; }
+  body.embedded .brand strong { display: none; }
+  body.embedded .top-actions { flex-wrap: nowrap; gap: 6px; margin-left: auto; min-width: 0; }
+  body.embedded #profile-chip { min-width: 0; max-width: 11rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

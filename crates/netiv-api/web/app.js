@@ -2122,12 +2122,21 @@
 
   // ------------------------------------------------------------------ disposition : zones, tailles, réglages
 
+  // Disposition choisie par la page hôte (`window.NETIV_LAYOUT`) :
+  // * « lab » : l'épreuve est déjà choisie, le catalogue est replié et le
+  //   panneau Défi ouvert ; ses réglages sont mémorisés à part pour ne pas
+  //   modifier ceux du bac à sable ;
+  // * sinon : l'interface complète.
+  const LAB_LAYOUT = window.NETIV_LAYOUT === 'lab';
+  const UI_KEY = LAB_LAYOUT ? 'netiv.ui.lab' : 'netiv.ui';
   const UI_DEFAULTS = {
-    sideW: 280, panelW: 380, consoleH: 200,
-    hideSide: false, hidePanel: false, hideConsole: false, focus: false,
+    sideW: 280, panelW: LAB_LAYOUT ? 400 : 380, consoleH: 200,
+    hideSide: LAB_LAYOUT, hidePanel: false, hideConsole: false, focus: false,
     font: 1, density: 'normal',
   };
-  state.ui = { ...UI_DEFAULTS, ...(store('netiv.ui') || {}) };
+  state.ui = { ...UI_DEFAULTS, ...(store(UI_KEY) || {}) };
+  // Intégrée dans une page (iframe) : en-tête compact.
+  if (window.NETIV_EMBEDDED) document.body.classList.add('embedded');
 
   /** Bornes de chaque taille, recalculées selon la fenêtre. */
   function bounds(key) {
@@ -2175,7 +2184,7 @@
   function setUi(patch) {
     Object.assign(state.ui, patch);
     applyUi();
-    store('netiv.ui', state.ui);
+    store(UI_KEY, state.ui);
   }
 
   /** Affiche / masque une zone. Quitter le mode « schéma seul » d'abord. */
@@ -2206,7 +2215,7 @@
         el.removeEventListener('pointermove', move);
         el.classList.remove('dragging');
         document.body.classList.remove('resizing', 'col', 'row');
-        store('netiv.ui', state.ui);
+        store(UI_KEY, state.ui);
       };
       el.addEventListener('pointermove', move);
       el.addEventListener('pointerup', up, { once: true });
