@@ -11,7 +11,9 @@ pub mod range;
 pub mod run;
 pub mod tutor;
 
-pub use challenge::{Built, Challenge, ChallengeError, Objective, ServiceRef, Solution};
+pub use challenge::{
+    Built, Challenge, ChallengeError, Objective, ServiceRef, Solution, Ticket, objective_reached,
+};
 pub use course::{Course, CourseItem, Grade, ItemKind};
 pub use faultspec::FaultSpec;
 pub use learn::{LearningPath, Lesson};

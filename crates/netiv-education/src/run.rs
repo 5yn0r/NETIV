@@ -28,7 +28,7 @@ pub const HINT_PENALTY: u32 = 10;
 pub const WRONG_ANSWER_PENALTY: u32 = 10;
 
 /// Résultat chiffré d'un challenge.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Score {
     /// Points de diagnostic.
     pub diagnosis: u32,
@@ -114,6 +114,7 @@ pub enum CheckOutcome {
 pub struct ChallengeRun {
     challenge: Challenge,
     probe: Probe,
+    dns_name: Option<String>,
     cause: RootCause,
     hints: Vec<String>,
     started_secs: u64,
@@ -139,6 +140,7 @@ impl ChallengeRun {
             ChallengeRun {
                 challenge,
                 probe: built.probe,
+                dns_name: built.dns_name,
                 cause: built.cause,
                 hints: built.hints,
                 started_secs: now_secs,
@@ -272,9 +274,18 @@ impl ChallengeRun {
             return Err(RunError::Finished);
         }
         let result = run_probe(sim, &self.probe).map_err(|_| RunError::NotFixed)?;
-        if !result.success {
+        let reached =
+            crate::challenge::objective_reached(sim, &self.probe, self.dns_name.as_deref())
+                .map_err(|_| RunError::NotFixed)?;
+        if !reached {
             return Ok(CheckOutcome::NotYet {
-                replies: result.replies,
+                // Avec un nom DNS qui ne se résout pas vers la bonne adresse,
+                // rien n'arrive à destination, même si l'adresse répond.
+                replies: if self.dns_name.is_some() && result.success {
+                    0
+                } else {
+                    result.replies
+                },
                 sent: result.sent,
             });
         }

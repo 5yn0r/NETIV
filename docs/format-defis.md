@@ -17,10 +17,11 @@ description: |
   PC1 n'arrive plus à joindre le serveur (192.168.2.10), alors que PC2 y arrivait
   ce matin. Trouve ce qui ne va pas sur PC1 et corrige-le.
 time_limit_minutes: 15
-topology_ref: office       # réseau livré (office, dmz, campus, triangle, cyber)…
+topology_ref: office       # réseau livré (office, dmz, campus, triangle, cyber, pme…)…
 # topology: { ... }        # … ou réseau complet en ligne (voir format-topologie.md)
 objective: { from: PC1, to: 192.168.2.10 }   # ping ; pour un service :
 # objective: { from: PC1, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
+# objective: { from: CPT1, to: 192.168.30.10, name: intranet.pme }  # le nom doit aussi se résoudre
 faults:
   - set_gateway: { device: PC1, gateway: 192.168.1.254 }
 solution:
@@ -32,6 +33,22 @@ solution:
   commands: ["gateway PC1 192.168.1.1"]
 hints: []                  # optionnel ; sinon les indices sont calculés depuis la panne
 ```
+
+### Tickets de support IT
+
+Un défi peut se présenter comme un ticket d'assistance : un utilisateur décrit un symptôme, l'élève
+cherche la cause. Deux champs facultatifs, repris dans le catalogue :
+
+```yaml
+track: support                              # parcours « Support IT »
+ticket: { id: "1042", requester: "Awa, accueil" }
+```
+
+Avec `name` dans l'objectif, l'objectif n'est atteint que si `from` résout ce nom vers `to`
+**et** joint `to` : une panne DNS (serveur arrêté, mauvais enregistrement, mauvais serveur sur
+le poste) casse donc l'objectif, et le diagnostic cherche aussi du côté du DNS.
+
+Les 10 tickets livrés (`support-01` à `support-10`, niveaux 1 et 2) utilisent le réseau `pme`.
 
 Lancer un défi écrit à la main : `challenge start mon-defi.yaml`. Le partager :
 `challenge export mon-defi.netiv` pendant qu'il est en cours.

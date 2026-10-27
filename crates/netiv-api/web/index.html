@@ -5,36 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NETIV — laboratoire réseau</title>
   <meta name="description" content="Laboratoire réseau interactif : construire, observer, casser, diagnostiquer, sécuriser.">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#stage">Aller au contenu</a>
 
   <header class="top">
     <div class="brand">
-      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="var(--accent)"></rect>
-        <path d="M8 24V8l16 16V8" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
-        <circle cx="8" cy="8" r="2.4" fill="#fff"></circle><circle cx="24" cy="24" r="2.4" fill="#fff"></circle>
+      <svg class="logo" viewBox="0 0 32 32" fill="none" stroke-linecap="round" aria-hidden="true">
+        <circle cx="16" cy="16" r="12.5" stroke="#4688E9" stroke-width="2.2"/>
+        <path d="M16 5.6v1.8M16 24.6v1.8M5.6 16h1.8M24.6 16h1.8" stroke="#4688E9" stroke-width="1.6"/>
+        <path d="M10.5 21.5 16 16" stroke="#1D66BE" stroke-width="2.4"/>
+        <path d="M16 16l5.5-5.5" stroke="#529EFC" stroke-width="2.4"/>
+        <circle cx="10.5" cy="21.5" r="2.4" fill="#1D66BE"/>
+        <circle cx="16" cy="16" r="2.2" class="logo-hub" stroke="#1D66BE" stroke-width="1.8"/>
+        <circle cx="21.5" cy="10.5" r="2.4" fill="#529EFC"/>
       </svg>
       <strong>NETIV</strong>
-      <span class="tag">Build. Break. Understand. Secure.</span>
     </div>
     <div class="top-actions">
       <div class="view-btns" role="group" aria-label="Zones affichées">
         <button id="vb-side" type="button" aria-pressed="true" title="Catalogue  [" aria-label="Afficher le catalogue">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><rect class="on" x="3.5" y="4.5" width="4" height="11" rx="1"/></svg>
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
         </button>
         <button id="vb-console" type="button" aria-pressed="true" title="Console  `" aria-label="Afficher la console">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><rect class="on" x="3.5" y="11.5" width="13" height="4" rx="1"/></svg>
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15h18"/></svg>
         </button>
         <button id="vb-panel" type="button" aria-pressed="true" title="Détails  ]" aria-label="Afficher le panneau de détails">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><rect class="on" x="11.5" y="4.5" width="5" height="11" rx="1"/></svg>
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>
         </button>
         <button id="vb-focus" type="button" aria-pressed="false" title="Schéma seul  F" aria-label="Schéma seul">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7.5V3.5h4M13 3.5h4v4M17 12.5v4h-4M7 16.5H3v-4"/></svg>
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
         </button>
       </div>
       <details id="view-menu" class="menu">
@@ -63,9 +66,9 @@
           <button id="layout-reset" type="button">Réinitialiser la disposition</button>
         </div>
       </details>
-      <button id="help-btn" class="icon-btn" type="button" aria-haspopup="dialog" aria-label="Aide et raccourcis" title="Aide et raccourcis  ?">?</button>
+      <button id="help-btn" class="icon-btn" type="button" aria-haspopup="dialog" aria-label="Aide et raccourcis" title="Aide et raccourcis  ?"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></button>
       <button id="profile-chip" class="chip" type="button" aria-haspopup="dialog" title="Progression"></button>
-      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Changer de thème" title="Changer de thème">◐</button>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Changer de thème" title="Thème clair ou sombre"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z"/></svg></button>
     </div>
   </header>
 
@@ -93,10 +96,11 @@
     <div id="split-side" class="splitter v" role="separator" aria-orientation="vertical" aria-controls="side" aria-label="Largeur du catalogue (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
     <section id="stage" class="stage" aria-label="Réseau">
+      <div class="stage-bar">
       <div class="stage-head">
         <h1 id="lab-title">Aucun réseau</h1>
         <span id="lab-meta" class="muted"></span>
-        <button id="build-toggle" class="build-toggle" type="button" aria-pressed="false" title="Construire ou modifier ce réseau  B">✎ Construire</button>
+        <button id="build-toggle" class="build-toggle" type="button" aria-pressed="false" title="Construire ou modifier ce réseau  B"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>Construire</button>
       </div>
 
       <div class="toolbar" role="group" aria-label="Actions">
@@ -105,9 +109,10 @@
         <label class="narrow">port <input id="tb-port" type="number" min="1" max="65535" placeholder="80" aria-label="Port (vide : ping)"></label>
         <label class="check"><input id="tb-stepmode" type="checkbox"> pas à pas</label>
         <button id="tb-go" class="primary" type="button">Envoyer</button>
-        <span class="sep" aria-hidden="true"></span>
+        <span id="tb-sep" class="sep" aria-hidden="true"></span>
         <button id="tb-step" type="button" title="Exécuter un seul événement">Pas à pas</button>
         <button id="tb-run" type="button" title="Exécuter tous les événements en attente">Tout exécuter</button>
+      </div>
       </div>
 
       <div id="buildbar" class="buildbar" role="toolbar" aria-label="Construire le réseau" hidden>
@@ -124,27 +129,28 @@
           <button id="bt-cable" type="button" aria-pressed="false" title="Relier deux équipements  C">Câble</button>
         </div>
         <span class="sep" aria-hidden="true"></span>
-        <button id="bt-undo" type="button" title="Annuler  Ctrl+Z" aria-label="Annuler">↶</button>
-        <button id="bt-redo" type="button" title="Rétablir  Ctrl+Y" aria-label="Rétablir">↷</button>
-        <button id="bt-delete" type="button" title="Supprimer la sélection  Suppr" aria-label="Supprimer la sélection">🗑</button>
+        <button id="bt-undo" type="button" title="Annuler  Ctrl+Z" aria-label="Annuler"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
+        <button id="bt-redo" type="button" title="Rétablir  Ctrl+Y" aria-label="Rétablir"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg></button>
+        <button id="bt-delete" type="button" title="Supprimer la sélection  Suppr" aria-label="Supprimer la sélection"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
         <span class="sep" aria-hidden="true"></span>
         <button id="bt-auto" type="button" title="Compléter l'adressage : IP, passerelles, routes">Adresser automatiquement</button>
-        <button id="bt-netiv" type="button" title="Télécharger le lab (.netiv)">⤓ .netiv</button>
-        <button id="bt-yaml" type="button" title="Télécharger la topologie (.yaml)">⤓ .yaml</button>
+        <button id="bt-netiv" type="button" title="Télécharger le lab (.netiv)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>.netiv</button>
+        <button id="bt-yaml" type="button" title="Télécharger la topologie (.yaml)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>.yaml</button>
         <button id="bt-exit" type="button" class="primary" title="Quitter le mode Construire  B">Terminer</button>
       </div>
       <div id="build-issues" class="issues" role="status" aria-live="polite" hidden></div>
 
       <div class="canvas-wrap">
-        <svg id="canvas" role="img" aria-label="Schéma du réseau" tabindex="0"></svg>
+        <svg id="canvas" role="group" aria-label="Schéma du réseau : cliquer un équipement ou un câble pour le détail" tabindex="0"></svg>
         <div id="canvas-empty" class="empty">
           <p id="canvas-empty-text"><strong>Choisis un lab</strong> dans le catalogue pour voir son schéma.</p>
         </div>
         <div class="zoom" role="group" aria-label="Zoom du schéma">
-          <button id="z-in" type="button" title="Zoomer  +" aria-label="Zoomer">+</button>
-          <button id="z-out" type="button" title="Dézoomer  −" aria-label="Dézoomer">−</button>
-          <button id="z-fit" type="button" title="Tout afficher  0" aria-label="Tout afficher">⤢</button>
-          <button id="z-relayout" type="button" title="Réorganiser les équipements" aria-label="Réorganiser les équipements">↻</button>
+          <button id="z-in" type="button" title="Zoomer  +" aria-label="Zoomer"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+          <button id="z-out" type="button" title="Dézoomer  −" aria-label="Dézoomer"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+          <button id="z-fit" type="button" title="Tout afficher  0" aria-label="Tout afficher"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg></button>
+          <button id="z-relayout" type="button" title="Réorganiser les équipements" aria-label="Réorganiser les équipements"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+          <button id="z-focus" type="button" aria-pressed="false" title="Schéma seul (agrandir)  F" aria-label="Schéma seul"><svg class="ic i-max" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg><svg class="ic i-restore" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg></button>
           <span id="z-level" class="zoom-level" aria-live="polite">100 %</span>
         </div>
         <ul class="legend" aria-label="Légende">
@@ -157,10 +163,21 @@
       <div id="split-console" class="splitter h" role="separator" aria-orientation="horizontal" aria-label="Hauteur de la console (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
       <section class="console" aria-label="Console">
-        <div id="console-out" class="console-out" role="log" aria-live="polite"></div>
+        <div class="console-head">
+          <span class="title">Console</span>
+          <div class="frame-tools" role="group" aria-label="Taille de la console">
+            <button id="console-clear" type="button" title="Effacer la console (ou « clear »)" aria-label="Effacer la console"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
+            <button id="console-min" type="button" title="Réduire la console" aria-label="Réduire la console"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+            <button id="console-max" type="button" aria-pressed="false" title="Agrandir la console" aria-label="Agrandir la console"><svg class="ic i-max" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg><svg class="ic i-restore" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg></button>
+            <button id="console-hide" type="button" title="Masquer la console (bouton Console en haut pour la réafficher)" aria-label="Masquer la console"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          </div>
+        </div>
+        <div id="console-out" class="console-out" role="log" aria-live="polite" aria-label="Sortie de la console" tabindex="0"></div>
+        <div id="console-suggest" class="console-suggest" role="group" aria-label="Suggestions" hidden></div>
         <form id="console-form" class="console-form" autocomplete="off">
-          <span class="prompt" aria-hidden="true">netiv&gt;</span>
-          <input id="console-in" type="text" spellcheck="false" aria-label="Commande NETIV" placeholder="ping PC1 192.168.2.10   (tape « help »)">
+          <span class="prompt" aria-hidden="true">netiv<b>›</b></span>
+          <input id="console-in" type="text" spellcheck="false" autocapitalize="off" aria-label="Commande NETIV" aria-describedby="console-hint" placeholder="ping PC1 192.168.2.10   (tape « help »)">
+          <span id="console-hint" class="console-hint"><kbd>Entrée</kbd> exécuter · <kbd>↑</kbd> historique · <kbd>Tab</kbd> compléter</span>
         </form>
       </section>
     </section>
@@ -168,12 +185,18 @@
     <div id="split-panel" class="splitter v" role="separator" aria-orientation="vertical" aria-controls="panel" aria-label="Largeur du panneau de détails (flèches ; double-clic : par défaut)" tabindex="0"></div>
 
     <section id="panel" class="panel" aria-label="Détails">
+      <div class="panel-head">
       <div class="tabs" role="tablist" aria-label="Panneaux">
         <button role="tab" data-tab="device" aria-selected="true">Appareil</button>
         <button role="tab" data-tab="journey" aria-selected="false">Parcours</button>
         <button role="tab" data-tab="trace" aria-selected="false">Trace</button>
         <button role="tab" data-tab="analysis" aria-selected="false">Analyse</button>
         <button role="tab" data-tab="challenge" aria-selected="false">Défi</button>
+      </div>
+      <div class="frame-tools" role="group" aria-label="Taille du panneau">
+        <button id="panel-wide" type="button" aria-pressed="false" title="Élargir le panneau" aria-label="Élargir le panneau"><svg class="ic i-max" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg><svg class="ic i-restore" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg></button>
+        <button id="panel-hide" type="button" title="Masquer le panneau (bouton Détails en haut pour le réafficher)" aria-label="Masquer le panneau"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      </div>
       </div>
       <div id="tab-device" class="tab-body" role="tabpanel"></div>
       <div id="tab-journey" class="tab-body" role="tabpanel" hidden></div>

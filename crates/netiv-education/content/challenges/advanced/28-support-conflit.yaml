@@ -1,0 +1,28 @@
+id: support-10
+title: Le réseau qui va et vient
+topic: addressing
+difficulty: hard
+track: support
+ticket: { id: "1050", requester: "Awa, accueil" }
+description: |
+  « Depuis l'arrivée du stagiaire à l'accueil, le réseau va et vient : une page sur
+  deux ne s'ouvre pas, l'intranet répond puis plus rien. Mon poste (ACC1) est le
+  plus touché, et ça dure depuis lundi. Le stagiaire a « configuré son poste
+  tout seul » pour aller plus vite. »
+
+  Rends à ACC1 l'accès au serveur de l'entreprise (192.168.30.10).
+time_limit_minutes: 25
+topology_ref: pme
+objective: { from: ACC1, to: 192.168.30.10 }
+faults:
+  - set_ip: { iface: "ACC2:eth0", ip: "192.168.10.1/24" }
+solution:
+  cause: wrong-ip
+  device: ACC2
+  explanation: |
+    Le stagiaire avait donné à son poste (ACC2) l'adresse 192.168.10.1… celle de la
+    passerelle R1. Deux machines répondaient donc à la question ARP « qui a
+    192.168.10.1 ? » : selon la réponse arrivée en dernier, ACC1 envoyait son trafic
+    au routeur (ça marche) ou au poste du stagiaire (ça se perd). D'où un réseau qui
+    « va et vient ». On repasse ACC2 en DHCP pour qu'il obtienne une adresse libre.
+  commands: ["ip ACC2 eth0 dhcp"]

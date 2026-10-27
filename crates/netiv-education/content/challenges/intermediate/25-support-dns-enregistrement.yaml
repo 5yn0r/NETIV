@@ -1,0 +1,26 @@
+id: support-07
+title: L'intranet ouvre la mauvaise chose
+topic: services
+difficulty: medium
+track: support
+ticket: { id: "1047", requester: "Yao, comptabilité" }
+description: |
+  « Depuis la migration de vendredi, quand j'ouvre intranet.pme, j'ai une erreur
+  de connexion. Les collègues ont le même problème. L'application métier, elle,
+  marche normalement. »
+
+  Rends l'intranet (intranet.pme, port 80) accessible depuis CPT1.
+time_limit_minutes: 20
+topology_ref: pme
+objective: { from: CPT1, to: 192.168.30.10, name: intranet.pme, service: { proto: tcp, port: 80 } }
+faults:
+  - dns_record: { device: SRV, name: intranet.pme, ip: "192.168.30.20" }
+solution:
+  cause: dns-record-wrong
+  device: SRV
+  explanation: |
+    Pendant la migration, l'enregistrement DNS « intranet.pme » a été modifié : il
+    pointait vers APP (192.168.30.20), qui n'héberge pas l'intranet. Les postes
+    allaient donc frapper à la mauvaise porte. « nslookup » montre l'adresse
+    obtenue ; la comparer à l'adresse attendue révèle l'erreur.
+  commands: ["dns record add SRV intranet.pme 192.168.30.10"]

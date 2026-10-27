@@ -5,6 +5,7 @@ use std::path::Path;
 use netiv_education::builtin;
 use netiv_education::range::{RangeCheck, RangeRun, parse_behavior};
 use netiv_education::run::{AnswerOutcome, RunError, Score};
+use netiv_security::forensics::CaptureError;
 use netiv_security::{Analysis, Capture, analyze, analyze_capture};
 
 use super::*;
@@ -47,7 +48,13 @@ impl Session {
                 self.fs_allowed()?;
                 let sim = self.sim()?;
                 let cap = Capture::from_sim(sim, &self.name);
-                cap.save(Path::new(file))?;
+                let text = cap.to_json(file)?;
+                self.storage
+                    .write(Path::new(file), &text)
+                    .map_err(|e| CaptureError::Io {
+                        path: (*file).to_string(),
+                        reason: e.to_string(),
+                    })?;
                 writeln!(
                     out,
                     "Capture enregistrée dans {file} ({} événements, {} équipements).",
@@ -75,7 +82,14 @@ impl Session {
             Capture::from_sim(self.sim()?, &self.name)
         } else {
             self.fs_allowed()?;
-            Capture::load(Path::new(what))?
+            let text = self
+                .storage
+                .read(Path::new(what))
+                .map_err(|e| CaptureError::Io {
+                    path: what.to_string(),
+                    reason: e.to_string(),
+                })?;
+            Capture::from_json(&text, what)?
         };
         if packets {
             write!(out, "{}", Analysis::render_packets(&cap))?;
@@ -288,10 +302,7 @@ impl Session {
     }
 
     fn save_profile_quiet(&self) -> Result<(), CliError> {
-        if let Some(path) = &self.profile_path {
-            self.profile.save(path)?;
-        }
-        Ok(())
+        self.save_profile_file()
     }
 
     fn range_report(&mut self, score: &Score, out: &mut dyn Write) -> Result<(), CliError> {

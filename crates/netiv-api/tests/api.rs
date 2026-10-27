@@ -97,7 +97,7 @@ async fn info_and_library_describe_what_is_available() {
     assert_eq!(info.json["sandbox"], true);
 
     let lib = get(&app, "/api/library").await.json;
-    assert_eq!(lib["challenges"].as_array().unwrap().len(), 18);
+    assert_eq!(lib["challenges"].as_array().unwrap().len(), 28);
     assert_eq!(lib["ranges"].as_array().unwrap().len(), 3);
     assert!(
         lib["topologies"]

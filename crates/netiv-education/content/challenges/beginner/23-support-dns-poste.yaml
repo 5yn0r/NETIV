@@ -1,0 +1,26 @@
+id: support-05
+title: Le nom de l'intranet ne marche pas
+topic: services
+difficulty: easy
+track: support
+ticket: { id: "1045", requester: "Awa, accueil" }
+description: |
+  « Quand je tape intranet.pme, rien ne s'affiche. Pourtant mon collègue de
+  l'accueil (ACC2) l'ouvre sans problème. J'ai suivi un tuto sur Internet pour
+  « accélérer ma connexion », depuis ça ne marche plus. »
+
+  Rends l'intranet (intranet.pme, port 80) accessible depuis ACC1.
+time_limit_minutes: 15
+topology_ref: pme
+objective: { from: ACC1, to: 192.168.30.10, name: intranet.pme, service: { proto: tcp, port: 80 } }
+faults:
+  - set_dns: { device: ACC1, server: "192.168.30.99" }
+solution:
+  cause: dns-wrong-server
+  device: ACC1
+  explanation: |
+    Le « tuto » avait remplacé le serveur DNS de ACC1 par une adresse où aucun
+    serveur DNS ne répond : le poste ne savait plus traduire intranet.pme en
+    adresse. Le serveur DNS de l'entreprise (192.168.30.10) est distribué par DHCP ;
+    il suffit de revenir à ce réglage automatique.
+  commands: ["dns ACC1 none"]

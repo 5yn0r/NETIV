@@ -1,0 +1,26 @@
+id: support-02
+title: Une adresse bizarre en 169.254
+topic: addressing
+difficulty: easy
+track: support
+ticket: { id: "1042", requester: "Awa, accueil" }
+description: |
+  « Mon PC (ACC1) dit qu'il est connecté, mais rien ne s'ouvre. Un collègue m'a
+  dit de regarder mon adresse : elle commence par 169.254. C'est grave ? »
+
+  Rends à ACC1 l'accès au serveur de l'entreprise (192.168.30.10).
+time_limit_minutes: 15
+topology_ref: pme
+objective: { from: ACC1, to: 192.168.30.10 }
+faults:
+  - set_ip: { iface: "ACC1:eth0", ip: "169.254.12.7/16" }
+solution:
+  cause: wrong-ip
+  device: ACC1
+  explanation: |
+    Une adresse en 169.254.x.x (APIPA) est celle qu'un poste se donne quand il n'a
+    pas obtenu d'adresse. Ici, quelqu'un l'avait figée à la main sur ACC1 : le poste
+    n'était plus dans le réseau de l'accueil (192.168.10.0/24) et n'avait pas de
+    passerelle. Remettre l'interface en DHCP lui fait obtenir une adresse valide,
+    sa passerelle et son serveur DNS.
+  commands: ["ip ACC1 eth0 dhcp"]

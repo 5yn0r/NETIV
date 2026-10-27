@@ -169,7 +169,9 @@ pub fn diagnose(
     } else {
         // Un poste sans adresse (ou configuré par un serveur pirate) : la
         // cause est côté DHCP, avant tout le reste.
+        // Puis un conflit d'adresses, qui fausse la lecture de la trace.
         let c = crate::dhcpdns::dhcp_cause(sim, req.src)
+            .or_else(|| crate::dhcpdns::ip_conflict_cause(sim, baseline, req.src))
             .or_else(|| env.classify())
             .or_else(|| env.static_scan())
             .unwrap_or_else(|| {

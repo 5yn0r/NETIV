@@ -83,9 +83,20 @@ pub struct Completion {
     pub times: u32,
 }
 
+/// Version actuelle du format de profil (voir `docs/formats-versionnement.md`).
+pub const PROFILE_SCHEMA_VERSION: u32 = 1;
+
+fn profile_schema_v1() -> u32 {
+    1
+}
+
 /// Le profil d'un élève.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Profile {
+    /// Version du format. Les profils écrits avant son introduction n'ont pas
+    /// ce champ : ils sont lus comme version 1.
+    #[serde(default = "profile_schema_v1")]
+    pub schema_version: u32,
     /// Nom.
     pub name: String,
     /// Challenges réussis.
@@ -96,6 +107,19 @@ pub struct Profile {
     pub lessons_read: BTreeSet<String>,
     /// Badges obtenus.
     pub badges: BTreeSet<String>,
+}
+
+impl Default for Profile {
+    fn default() -> Self {
+        Profile {
+            schema_version: PROFILE_SCHEMA_VERSION,
+            name: String::new(),
+            completed: BTreeMap::new(),
+            attempts: BTreeMap::new(),
+            lessons_read: BTreeSet::new(),
+            badges: BTreeSet::new(),
+        }
+    }
 }
 
 /// Ce qu'un résultat a changé.
@@ -132,6 +156,11 @@ pub enum ProfileError {
         /// Cause.
         reason: String,
     },
+    /// Profil écrit par une version plus récente de NETIV.
+    #[error(
+        "profil au format version {0} : cette version de NETIV lit jusqu'à la version {PROFILE_SCHEMA_VERSION}"
+    )]
+    TooNew(u32),
 }
 
 /// Niveau pour un total d'XP : (numéro à partir de 1, nom, seuil suivant).
@@ -251,13 +280,32 @@ impl Profile {
         self.lessons_read.insert(id.to_string());
     }
 
+    /// Sérialise le profil en JSON (format des fichiers de profil).
+    pub fn to_json(&self) -> Result<String, ProfileError> {
+        serde_json::to_string_pretty(self).map_err(|e| ProfileError::Corrupt {
+            path: self.name.clone(),
+            reason: e.to_string(),
+        })
+    }
+
+    /// Lit un profil JSON (fichier, base de données...). `origin` nomme la
+    /// provenance dans les messages d'erreur. Un profil d'une version plus
+    /// récente que [`PROFILE_SCHEMA_VERSION`] est refusé.
+    pub fn from_json(text: &str, origin: &str) -> Result<Profile, ProfileError> {
+        let p: Profile = serde_json::from_str(text).map_err(|e| ProfileError::Corrupt {
+            path: origin.to_string(),
+            reason: e.to_string(),
+        })?;
+        if p.schema_version > PROFILE_SCHEMA_VERSION {
+            return Err(ProfileError::TooNew(p.schema_version));
+        }
+        Ok(p)
+    }
+
     /// Charge un profil ; un fichier absent donne un profil neuf.
     pub fn load(path: &Path, name: &str) -> Result<Profile, ProfileError> {
         match std::fs::read_to_string(path) {
-            Ok(text) => serde_json::from_str(&text).map_err(|e| ProfileError::Corrupt {
-                path: path.display().to_string(),
-                reason: e.to_string(),
-            }),
+            Ok(text) => Profile::from_json(&text, &path.display().to_string()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Profile::new(name)),
             Err(e) => Err(ProfileError::Io {
                 path: path.display().to_string(),
@@ -275,10 +323,7 @@ impl Profile {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(io)?;
         }
-        let text = serde_json::to_string_pretty(self).map_err(|e| ProfileError::Corrupt {
-            path: path.display().to_string(),
-            reason: e.to_string(),
-        })?;
+        let text = self.to_json()?;
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, text).map_err(io)?;
         std::fs::rename(&tmp, path).map_err(io)
@@ -375,19 +420,32 @@ pub fn leaderboard(dir: &Path) -> Result<(Vec<LeaderEntry>, usize), ProfileError
         path: dir.display().to_string(),
         reason: e.to_string(),
     })?;
-    let mut board = Vec::new();
-    let mut skipped = 0;
-    for e in entries.flatten() {
+    let profiles = entries.flatten().filter_map(|e| {
         let path = e.path();
         if path.extension().and_then(|x| x.to_str()) != Some("json") {
-            continue;
+            return None;
         }
         let stem = path
             .file_stem()
             .and_then(|x| x.to_str())
             .unwrap_or("?")
             .to_string();
-        match Profile::load(&path, &stem) {
+        Some(Profile::load(&path, &stem))
+    });
+    Ok(rank(profiles))
+}
+
+/// Classe des profils déjà lus (d'où qu'ils viennent) : XP décroissant, puis
+/// nom. Les profils illisibles (`Err`) ou sans nom sont ignorés et comptés dans
+/// le second élément du résultat.
+pub fn rank<I, E>(profiles: I) -> (Vec<LeaderEntry>, usize)
+where
+    I: IntoIterator<Item = Result<Profile, E>>,
+{
+    let mut board = Vec::new();
+    let mut skipped = 0;
+    for p in profiles {
+        match p {
             Ok(p) if !p.name.is_empty() => {
                 let xp = p.xp();
                 let (level, level_name, _) = level_for(xp);
@@ -404,7 +462,7 @@ pub fn leaderboard(dir: &Path) -> Result<(Vec<LeaderEntry>, usize), ProfileError
         }
     }
     board.sort_by(|a, b| b.xp.cmp(&a.xp).then_with(|| a.name.cmp(&b.name)));
-    Ok((board, skipped))
+    (board, skipped)
 }
 
 /// Nom français d'un thème.
@@ -563,7 +621,8 @@ mod tests {
             text.contains("Niveau 2 « Technicien » — XP : 200 / 400"),
             "{text}"
         );
-        assert!(text.contains("Adressage") && text.contains("66%"), "{text}");
+        // Adressage : 2 réussis sur 6 (dont 3 tickets de support).
+        assert!(text.contains("Adressage") && text.contains("33%"), "{text}");
         let order: Vec<usize> = [
             "Physique",
             "Adressage",
@@ -580,8 +639,40 @@ mod tests {
             "ordre des thèmes : {text}"
         );
         assert!(text.contains("Routage") && text.contains("0%"), "{text}");
-        assert!(text.contains("Challenges réussis : 2 / 21"), "{text}");
+        assert!(text.contains("Challenges réussis : 2 / 31"), "{text}");
         assert!(text.contains("Network Beginner"), "{text}");
+    }
+
+    #[test]
+    fn json_roundtrip_and_schema_version() {
+        let mut p = Profile::new("alice");
+        p.record(ch("beginner-01"), &score(100, 0, 100));
+        let json = p.to_json().unwrap();
+        assert!(json.contains("\"schema_version\": 1"), "{json}");
+        assert_eq!(Profile::from_json(&json, "test").unwrap(), p);
+
+        // Un profil écrit avant l'introduction du champ est lu comme version 1.
+        let old = r#"{"name":"bob","completed":{},"attempts":{},"lessons_read":[],"badges":[]}"#;
+        let old = Profile::from_json(old, "ancien").unwrap();
+        assert_eq!(old.schema_version, 1);
+        assert_eq!(old, Profile::new("bob"));
+
+        // Un profil plus récent que cette version est refusé, sans être abîmé.
+        let future = json.replace("\"schema_version\": 1", "\"schema_version\": 99");
+        let e = Profile::from_json(&future, "futur").unwrap_err();
+        assert!(matches!(e, ProfileError::TooNew(99)), "{e}");
+    }
+
+    #[test]
+    fn ranking_ignores_unreadable_and_unnamed_profiles() {
+        let mut alice = Profile::new("alice");
+        alice.record(ch("beginner-01"), &score(100, 0, 100));
+        let bob = Profile::new("bob");
+        let unnamed = Profile::new("");
+        let (board, skipped) = rank([Ok(bob), Err(()), Ok(alice), Ok(unnamed)]);
+        let names: Vec<&str> = board.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["alice", "bob"]);
+        assert_eq!(skipped, 2);
     }
 
     #[test]

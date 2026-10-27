@@ -1,0 +1,30 @@
+[package]
+name = "netiv-service"
+description = "Logique des réponses de l'API NETIV, sans HTTP : partagée par netiv-api et netiv-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = ["parallel"]
+# Voir netiv-diagnostics : sans cette feature (WebAssembly), tout est séquentiel.
+parallel = ["netiv-cli/parallel"]
+
+[dependencies]
+netiv-core = { workspace = true }
+netiv-topology = { workspace = true }
+netiv-diagnostics = { workspace = true }
+netiv-security = { workspace = true }
+netiv-analysis = { workspace = true }
+netiv-education = { workspace = true }
+netiv-cli = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

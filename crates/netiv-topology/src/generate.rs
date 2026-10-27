@@ -384,6 +384,7 @@ pub fn generate(spec: &GenSpec) -> Result<TopologyDef, String> {
     devices.extend(switch_defs);
     devices.extend(host_defs);
     Ok(TopologyDef {
+        schema_version: crate::TOPOLOGY_SCHEMA_VERSION,
         network: NetworkDef {
             name: format!("{}-{}r-{}h", spec.kind.slug(), n, spec.hosts),
             seed: spec.seed,
@@ -472,6 +473,7 @@ fn lan(spec: &GenSpec) -> Result<TopologyDef, String> {
         devices.push(h);
     }
     Ok(TopologyDef {
+        schema_version: crate::TOPOLOGY_SCHEMA_VERSION,
         network: NetworkDef {
             name: format!("lan-{}h", spec.hosts),
             seed: spec.seed,
@@ -622,6 +624,7 @@ fn cyber_range(spec: &GenSpec) -> Result<TopologyDef, String> {
     devices.push(file);
     links.push(link("FW1:eth3".into(), "FILE01:eth0".into()));
     Ok(TopologyDef {
+        schema_version: crate::TOPOLOGY_SCHEMA_VERSION,
         network: NetworkDef {
             name: format!("cyber-range-{users}h"),
             seed: spec.seed,

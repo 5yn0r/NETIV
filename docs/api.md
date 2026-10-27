@@ -15,7 +15,9 @@ L'interface web n'utilise que cette API : tout ce qu'elle fait peut être script
   ne survivent pas à l'arrêt du serveur ; la **progression** (XP, badges) est enregistrée dans le
   profil, comme en CLI.
 - Toutes les réponses sont en JSON. Une erreur HTTP renvoie `{"error": "message"}` avec le code
-  400 (requête invalide), 403 (hôte refusé), 404 (lab ou ressource inconnus) ou 413 (corps trop gros).
+  400 (requête invalide), 403 (hôte refusé, ou analyse demandée pendant un défi), 404 (lab ou
+  ressource inconnus), 409 (réseau verrouillé pendant un défi), 413 (corps trop gros), 415 (corps
+  qui n'est pas du JSON) ou 422 (JSON qui ne correspond pas au format attendu).
 - Une **commande** qui échoue (`POST …/exec`) n'est pas une erreur HTTP : la réponse est 200 avec
   le message dans le champ `error`, comme la CLI qui affiche l'erreur et continue.
 
@@ -54,7 +56,7 @@ Le corps contient **exactement une** source :
 | Corps | Effet |
 |---|---|
 | `{"empty": "mon-reseau"}` | Réseau vide, à construire dans l'éditeur |
-| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`, `dhcp`) |
+| `{"builtin": "office"}` | Réseau livré (`office`, `dmz`, `campus`, `triangle`, `cyber`, `dhcp`, `pme`) |
 | `{"yaml": "network: …"}` | Topologie fournie (YAML, JSON ou `.netiv`) |
 | `{"generate": {"type": "campus", "routers": 5, "hosts": 12, "seed": 1}}` | Topologie générée |
 | `{"challenge": "beginner-01"}` | Défi livré |
@@ -96,7 +98,12 @@ Renvoyé par `GET /api/labs/{id}`, à la création et après chaque commande :
 
 Pendant un défi, `challenge` vaut par exemple
 `{"id": "beginner-01", "kind": "challenge", "title": "…", "description": "…", "remaining_secs": 900,
-"hints_used": 0, "answered": false, "fixed": false, "finished": false, "score": null}`.
+"hints_used": 0, "answered": false, "fixed": false, "finished": false, "score": null,
+"score_detail": null}`.
+
+Une fois l'épreuve réussie, `score` donne le total (défis seulement) et `score_detail` le détail,
+pour un défi comme pour un cyber range : `{"diagnosis": 40, "fix": 40, "time": 15,
+"hint_penalty": 10, "total": 85, "xp": 85, "elapsed_secs": 240, "hints": 1}`.
 
 ### Exécuter une commande
 

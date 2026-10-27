@@ -1,0 +1,27 @@
+id: support-01
+title: Plus rien depuis le changement de bureau
+topic: physical
+difficulty: easy
+track: support
+ticket: { id: "1041", requester: "Konan, accueil" }
+description: |
+  « Bonjour, depuis que j'ai changé de bureau ce matin, mon poste (ACC2) n'a plus
+  rien : ni l'intranet, ni Internet. J'ai bien rebranché le câble dans la prise
+  murale. Ma collègue sur ACC1 n'a aucun problème. »
+
+  Rétablis l'accès de ACC2 au serveur de l'entreprise (192.168.30.10).
+time_limit_minutes: 15
+topology_ref: pme
+objective: { from: ACC2, to: 192.168.30.10 }
+faults:
+  - interface_down: { iface: "SW1:p2" }
+solution:
+  cause: interface-down
+  device: SW1
+  explanation: |
+    Le câble de ACC2 arrive sur le port p2 du switch d'étage SW1, et ce port était
+    désactivé (administrativement éteint) : aucun signal, donc aucune adresse DHCP
+    et aucune communication. Au support, on vérifie toujours le voyant de la prise
+    et l'état du port côté switch. Une fois le port réactivé, le poste redemande
+    son adresse.
+  commands: ["iface SW1 p2 up", "dhcp ACC2"]

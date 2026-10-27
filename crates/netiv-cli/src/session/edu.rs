@@ -6,7 +6,7 @@ use std::path::Path;
 use netiv_education::builtin;
 use netiv_education::learn::{self, LearningPath};
 use netiv_education::run::{AnswerOutcome, CheckOutcome, RunError, Score, parse_cause};
-use netiv_education::{Challenge, ChallengeRun, Course};
+use netiv_education::{Challenge, ChallengeRun, Course, Ticket};
 
 use super::*;
 
@@ -31,8 +31,13 @@ pub struct ChallengeInfo {
     pub hints_used: u32,
     /// Secondes restantes sur le temps conseillé (négatif si dépassé).
     pub remaining_secs: i64,
-    /// Score final, s'il y en a un.
+    /// Score final, s'il y en a un (challenge seulement).
     pub score: Option<u32>,
+    /// Détail du score final (diagnostic, correction, temps, indices, XP),
+    /// pour un challenge comme pour un cyber range.
+    pub score_detail: Option<Score>,
+    /// Ticket de support qui présente le challenge, s'il y en a un.
+    pub ticket: Option<Ticket>,
 }
 
 const LOCKED: &str = "indisponible pendant un challenge : c'est à toi de trouver (« hint » si tu bloques, −10 points)";
@@ -72,6 +77,8 @@ impl Session {
                 hints_used: r.hints_used(),
                 remaining_secs: r.remaining_secs(now),
                 score: r.score().map(|s| s.total),
+                score_detail: r.score().cloned(),
+                ticket: c.ticket.clone(),
             });
         }
         self.range_run.as_ref().map(|r| {
@@ -87,6 +94,8 @@ impl Session {
                 hints_used: r.hints_used(),
                 remaining_secs: r.remaining_secs(now),
                 score: None,
+                score_detail: r.score().cloned(),
+                ticket: None,
             }
         })
     }
@@ -115,10 +124,7 @@ impl Session {
     }
 
     fn save_profile(&self) -> Result<(), CliError> {
-        if let Some(path) = &self.profile_path {
-            self.profile.save(path)?;
-        }
-        Ok(())
+        self.save_profile_file()
     }
 
     // ------------------------------------------------------------------
@@ -197,7 +203,7 @@ impl Session {
         if let Some(c) = builtin::challenge(what) {
             return Ok(c.clone());
         }
-        if !self.sandbox && Path::new(what).is_file() {
+        if !self.sandbox && self.storage.is_file(Path::new(what)) {
             let text = self.read_text(what)?;
             if text.contains("format_version") {
                 let bundle = netiv_topology::Bundle::from_yaml(&text)?;
@@ -600,7 +606,7 @@ impl Session {
                     [] => write!(out, "{yaml}")?,
                     [file] => {
                         self.fs_allowed()?;
-                        if Path::new(file).exists() {
+                        if self.storage.exists(Path::new(file)) {
                             return err(format!("« {file} » existe déjà : je ne l'écrase pas"));
                         }
                         self.write_text(file, &yaml)?;

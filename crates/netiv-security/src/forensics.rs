@@ -108,17 +108,35 @@ impl Capture {
         }
     }
 
-    /// Écrit la capture (JSON).
-    pub fn save(&self, path: &Path) -> Result<(), CaptureError> {
-        let io = |e: std::io::Error| CaptureError::Io {
-            path: path.display().to_string(),
+    /// Sérialise la capture (JSON compact, format des fichiers `.nlv`).
+    /// `origin` nomme la destination dans les messages d'erreur.
+    pub fn to_json(&self, origin: &str) -> Result<String, CaptureError> {
+        serde_json::to_string(self).map_err(|e| CaptureError::Corrupt {
+            path: origin.to_string(),
             reason: e.to_string(),
-        };
-        let text = serde_json::to_string(self).map_err(|e| CaptureError::Corrupt {
-            path: path.display().to_string(),
+        })
+    }
+
+    /// Lit une capture JSON. `origin` nomme la provenance dans les messages
+    /// d'erreur. Une capture d'une version plus récente est refusée.
+    pub fn from_json(text: &str, origin: &str) -> Result<Capture, CaptureError> {
+        let cap: Capture = serde_json::from_str(text).map_err(|e| CaptureError::Corrupt {
+            path: origin.to_string(),
             reason: e.to_string(),
         })?;
-        std::fs::write(path, text).map_err(io)
+        if cap.format_version > CAPTURE_FORMAT_VERSION {
+            return Err(CaptureError::TooNew(cap.format_version));
+        }
+        Ok(cap)
+    }
+
+    /// Écrit la capture (JSON).
+    pub fn save(&self, path: &Path) -> Result<(), CaptureError> {
+        let text = self.to_json(&path.display().to_string())?;
+        std::fs::write(path, text).map_err(|e| CaptureError::Io {
+            path: path.display().to_string(),
+            reason: e.to_string(),
+        })
     }
 
     /// Lit une capture.
@@ -127,14 +145,7 @@ impl Capture {
             path: path.display().to_string(),
             reason: e.to_string(),
         })?;
-        let cap: Capture = serde_json::from_str(&text).map_err(|e| CaptureError::Corrupt {
-            path: path.display().to_string(),
-            reason: e.to_string(),
-        })?;
-        if cap.format_version > CAPTURE_FORMAT_VERSION {
-            return Err(CaptureError::TooNew(cap.format_version));
-        }
-        Ok(cap)
+        Capture::from_json(&text, &path.display().to_string())
     }
 
     fn name(&self, id: DeviceId) -> &str {

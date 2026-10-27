@@ -372,6 +372,11 @@ impl RangeRun {
         self.finished.is_some() || self.gave_up
     }
 
+    /// Score final, une fois le scénario réussi.
+    pub fn score(&self) -> Option<&Score> {
+        self.finished.as_ref()
+    }
+
     /// Secondes restantes sur le temps conseillé.
     pub fn remaining_secs(&self, now: u64) -> i64 {
         i64::from(self.scenario.time_limit_minutes) * 60

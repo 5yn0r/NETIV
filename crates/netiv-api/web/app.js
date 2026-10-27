@@ -34,6 +34,20 @@
     }
     return el;
   }
+  // Icônes : tracés repris de Lucide (licence ISC), la famille d'icônes
+  // d'ITEtude. Le HTML statique utilise les mêmes.
+  const ICONS = {
+    x: ['M18 6 6 18', 'm6 6 12 12'],
+    first: ['M19 20 9 12l10-8z', 'M5 19V5'],
+    prev: ['m15 18-6-6 6-6'],
+    next: ['m9 18 6-6-6-6'],
+    play: ['M6 3l14 9-14 9z'],
+    pause: ['M7 4h3v16H7z', 'M14 4h3v16h-3z'],
+  };
+  function icon(name) {
+    return s('svg', { class: 'ic', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ICONS[name].map((d) => s('path', { d })));
+  }
+
   function clear(el) {
     while (el.firstChild) el.removeChild(el.firstChild);
     return el;
@@ -93,7 +107,15 @@
 
   // ------------------------------------------------------------------ API
 
+  // Transport, choisi au démarrage :
+  // * mode serveur (défaut) : `fetch` vers l'API HTTP de `netiv serve` ;
+  // * mode WebAssembly : le moteur est dans la page (`window.netivEngine`,
+  //   installé par crates/netiv-wasm/web/netiv-boot.js), même contrat que l'API.
+  // `window.NETIV_MODE = 'server'` force le mode serveur.
+  const engine = window.NETIV_MODE === 'server' ? null : (window.netivEngine || null);
+
   async function api(method, path, body) {
+    if (engine) return engineApi(method, path, body);
     const init = { method, headers: {} };
     if (body !== undefined) {
       init.headers['Content-Type'] = 'application/json';
@@ -113,6 +135,17 @@
       throw err;
     }
     return data;
+  }
+
+  /** Même requête, traitée par le moteur WebAssembly de la page. */
+  async function engineApi(method, path, body) {
+    try {
+      return engine.request(method, path, body);
+    } catch (e) {
+      const err = new Error((e && e.error) || String(e));
+      err.status = (e && e.status) || 500;
+      throw err;
+    }
   }
 
   function banner(msg, kind = 'error') {
@@ -140,20 +173,148 @@
 
   // ------------------------------------------------------------------ console
 
-  function consoleLine(text, cls) {
+  // ---- console : complétion (Tab)
+
+  const COMMANDS = ['acl', 'answer', 'arp', 'badges', 'baseline', 'cable', 'capture', 'challenge', 'chaos', 'clear',
+    'course', 'curl', 'dashboard', 'devices', 'dhcp', 'diagnose', 'dns', 'docs', 'explain', 'forensic', 'forwarding',
+    'gateway', 'health', 'help', 'hint', 'iface', 'inspect', 'ip', 'lab', 'latency', 'leaderboard', 'learn', 'load',
+    'log', 'loss', 'nslookup', 'ping', 'port', 'range', 'route', 'run', 'security', 'service', 'show', 'step', 'time',
+    'topology', 'trace', 'tutor', 'udp', 'what-if'];
+  const SUBCOMMANDS = {
+    show: ['ifaces', 'arp', 'route', 'mac', 'vlan', 'acl', 'services', 'dhcp', 'dns'],
+    challenge: ['list', 'start', 'show', 'check', 'finish', 'giveup', 'causes', 'export'],
+    range: ['list', 'start', 'show', 'check', 'finish', 'giveup'],
+    route: ['add', 'del'],
+    chaos: ['start', 'undo', 'reveal', 'list'],
+    acl: ['add', 'insert', 'del', 'default', 'stateful'],
+  };
+
+  /** Candidats pour le mot en cours : commande, sous-commande ou équipement. */
+  function candidates(words) {
+    if (words.length === 1) return COMMANDS;
+    const sub = SUBCOMMANDS[words[0]];
+    if (sub && words.length === 2) return [...sub, ...(state.snap ? state.snap.devices.map((d) => d.name) : [])];
+    return state.snap ? state.snap.devices.map((d) => d.name) : [];
+  }
+
+  function clearSuggestions() {
+    const box = $('#console-suggest');
+    if (box && !box.hidden) { clear(box); box.hidden = true; }
+  }
+
+  /** Tab : complète le mot en cours ; plusieurs possibilités → les propose. */
+  function complete(input) {
+    const value = input.value;
+    const words = value.replace(/^\s+/, '').split(/\s+/);
+    const word = words[words.length - 1];
+    const lower = word.toLowerCase();
+    const matches = candidates(words).filter((c) => c.toLowerCase().startsWith(lower));
+    const box = $('#console-suggest');
+    clearSuggestions();
+    if (!matches.length) return;
+    const replace = (choice) => {
+      input.value = value.slice(0, value.length - word.length) + choice + ' ';
+      input.focus();
+    };
+    if (matches.length === 1) { replace(matches[0]); return; }
+    // Préfixe commun, puis la liste des choix.
+    let common = matches[0];
+    for (const m of matches) while (!m.toLowerCase().startsWith(common.toLowerCase())) common = common.slice(0, -1);
+    if (common.length > word.length) input.value = value.slice(0, value.length - word.length) + common;
+    for (const m of matches.slice(0, 24)) {
+      box.append(h('button', { type: 'button', onclick: () => { replace(m); clearSuggestions(); } }, m));
+    }
+    box.hidden = false;
+  }
+
+  // ---- console : rendu
+  //
+  // La sortie vient du serveur : elle n'est jamais interprétée comme du HTML.
+  // Elle est découpée en morceaux de texte, certains dans des <span> colorés
+  // (adresses, durées, réussites, échecs, commandes suggérées).
+
+  /** Motifs colorés, du plus précis au plus général. */
+  const TOKENS = [
+    // Commande suggérée entre guillemets : « trace 1 » (cliquable).
+    ['t-cmd', /«\s?([a-z][^»]{0,80}?)\s?»/g],
+    ['t-ip', /\b(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?\b/g],
+    ['t-num', /\b\d+(?:[.,]\d+)?\s?(?:ms|µs|s)\b/g],
+    ['t-ok', /\b(?:réponse de|réussi|objectif atteint|0 % de perte|en service|OK)\b|✓/g],
+    ['t-bad', /\b(?:pas de réponse|délai dépassé|100 % de perte|inaccessible|injoignable|refusée?|coupée?|échec|abandon)\b|✗/g],
+  ];
+
+  /** Texte d'une sortie → nœuds, avec les motifs colorés. */
+  function highlight(text) {
+    const marks = [];
+    for (const [cls, re] of TOKENS) {
+      for (const m of text.matchAll(re)) {
+        const start = m.index, end = start + m[0].length;
+        if (marks.some((k) => start < k.end && end > k.start)) continue;
+        // Entre guillemets, seules les vraies commandes deviennent cliquables
+        // (« Réseau « office » chargé » cite un nom, pas une commande).
+        if (cls === 't-cmd' && !COMMANDS.includes(m[1].trim().split(/\s+/)[0])) continue;
+        marks.push({ start, end, cls, cmd: cls === 't-cmd' ? m[1].trim() : null });
+      }
+    }
+    marks.sort((a, b) => a.start - b.start);
+    const nodes = [];
+    let at = 0;
+    for (const k of marks) {
+      if (k.start > at) nodes.push(text.slice(at, k.start));
+      const part = text.slice(k.start, k.end);
+      nodes.push(k.cmd
+        ? h('button', { type: 'button', class: 't-cmd', title: 'Copier dans la ligne de commande', onclick: () => suggestCommand(k.cmd) }, part)
+        : h('span', { class: k.cls }, part));
+      at = k.end;
+    }
+    if (at < text.length) nodes.push(text.slice(at));
+    return nodes;
+  }
+
+  /** Place une commande dans la ligne de saisie (sans l'exécuter). */
+  function suggestCommand(cmd) {
+    const input = $('#console-in');
+    input.value = cmd.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() + (/[<…]/.test(cmd) ? ' ' : '');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  function consoleAppend(el) {
     const out = $('#console-out');
-    const line = h('div', { class: cls || null }, text);
-    out.append(line);
-    while (out.childElementCount > 1500) out.removeChild(out.firstChild);
+    out.append(el);
+    while (out.childElementCount > 600) out.removeChild(out.firstChild);
     out.scrollTop = out.scrollHeight;
+  }
+
+  /** Ligne d'information, de note ou d'erreur (hors commande). */
+  function consoleLine(text, cls) {
+    consoleAppend(h('div', { class: `entry ${cls || ''}` }, h('div', { class: 'out' }, cls === 'err' ? text : highlight(text))));
+  }
+
+  /** Bloc d'une commande : en-tête (invite, commande, heure) puis sortie. */
+  function consoleCommand(line) {
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const entry = h('div', { class: 'entry' },
+      h('div', { class: 'cmd' }, h('span', { class: 'ps', 'aria-hidden': 'true' }, '›'), h('span', { class: 'line' }, line), h('time', null, time)));
+    consoleAppend(entry);
+    return entry;
+  }
+
+  /** Ajoute la sortie (ou l'erreur) d'une commande à son bloc. */
+  function consoleResult(entry, output, error) {
+    if (output) entry.append(h('div', { class: 'out' }, highlight(output)));
+    if (error) entry.append(h('div', { class: 'out err' }, h('span', { class: 'err-tag' }, 'erreur'), ` ${error}`));
+    if (!output && !error) entry.classList.add('silent');
+    $('#console-out').scrollTop = $('#console-out').scrollHeight;
   }
 
   async function runCommand(line, { echo = true } = {}) {
     if (!state.current) throw new Error("Aucun lab ouvert : choisis un réseau dans le catalogue.");
-    if (echo) consoleLine(`netiv> ${line}`, 'cmd');
+    const entry = echo ? consoleCommand(line) : h('div', { class: 'entry' });
+    if (!echo) consoleAppend(entry);
     const r = await api('POST', `/api/labs/${state.current}/exec`, { line });
-    if (r.output) consoleLine(r.output.replace(/\n+$/, ''));
-    if (r.error) consoleLine(`erreur : ${r.error}`, 'err');
+    consoleResult(entry, r.output && r.output.replace(/\n+$/, ''), r.error);
     applySnapshot(r.snapshot);
     await refreshAfterCommand(r);
     return r;
@@ -236,7 +397,8 @@
     const locked = state.snap && state.snap.editable === false;
     t.setAttribute('aria-pressed', String(on));
     t.disabled = !state.snap || (!on && locked);
-    t.title = locked && !on ? (state.snap.edit_lock || '') : 'Construire ou modifier ce réseau  B';
+    t.hidden = !on && locked;
+    t.title = 'Construire ou modifier ce réseau  B';
   }
 
   async function createLab(body) {
@@ -847,7 +1009,7 @@
     const snap = state.snap;
     $('#lab-title').textContent = snap && snap.name ? snap.name : 'Aucun réseau';
     $('#lab-meta').textContent = snap && snap.name
-      ? `${snap.devices.length} équipements · ${snap.links.length} câbles · t = ${snap.time} · ${snap.trace_len} événements${snap.pending ? ` · ${snap.pending} en attente` : ''}`
+      ? `${snap.devices.length} équipements · ${snap.links.length} câbles · t = ${snap.time}${snap.pending ? ` · ${snap.pending} en attente` : ''}`
       : '';
     renderToolbar();
     renderCanvas();
@@ -855,6 +1017,8 @@
 
   function renderToolbar() {
     const snap = state.snap;
+    const pending = !!(snap && snap.pending);
+    for (const id of ['#tb-sep', '#tb-step', '#tb-run']) $(id).hidden = !pending;
     const src = $('#tb-src'), dst = $('#tb-dst');
     const keepSrc = src.value, keepDst = dst.value;
     clear(src); clear(dst);
@@ -1317,7 +1481,7 @@
     return el;
   }
 
-  const del = (label, onclick) => h('button', { type: 'button', class: 'icon del', 'aria-label': label, title: label, onclick }, '✕');
+  const del = (label, onclick) => h('button', { type: 'button', class: 'icon del', 'aria-label': label, title: label, onclick }, icon('x'));
 
   /** Modifie l'équipement `name` (copie) et applique. */
   function editDevice(name, mutate) {
@@ -1822,10 +1986,10 @@
     if (!j) return;
     const total = j.steps.length;
     root.append(h('div', { class: 'player', role: 'group', 'aria-label': 'Lecteur' },
-      h('button', { type: 'button', id: 'pl-first', title: 'Début', 'aria-label': 'Début', onclick: () => gotoStep(-1) }, '⏮'),
-      h('button', { type: 'button', id: 'pl-prev', title: 'Étape précédente (←)', 'aria-label': 'Étape précédente', onclick: () => gotoStep(state.step - 1) }, '◀'),
-      h('button', { type: 'button', id: 'pl-play', class: 'primary', title: 'Lecture / pause (espace)', 'aria-label': 'Lecture', onclick: togglePlay }, state.playing ? '⏸' : '▶'),
-      h('button', { type: 'button', id: 'pl-next', title: 'Étape suivante (→)', 'aria-label': 'Étape suivante', onclick: () => gotoStep(state.step + 1) }, '▶|'),
+      h('button', { type: 'button', id: 'pl-first', class: 'icon', title: 'Début', 'aria-label': 'Début', onclick: () => gotoStep(-1) }, icon('first')),
+      h('button', { type: 'button', id: 'pl-prev', class: 'icon', title: 'Étape précédente (←)', 'aria-label': 'Étape précédente', onclick: () => gotoStep(state.step - 1) }, icon('prev')),
+      h('button', { type: 'button', id: 'pl-play', class: 'primary icon', title: 'Lecture / pause (espace)', 'aria-label': state.playing ? 'Pause' : 'Lecture', onclick: togglePlay }, icon(state.playing ? 'pause' : 'play')),
+      h('button', { type: 'button', id: 'pl-next', class: 'icon', title: 'Étape suivante (→)', 'aria-label': 'Étape suivante', onclick: () => gotoStep(state.step + 1) }, icon('next')),
       h('select', { id: 'pl-speed', 'aria-label': 'Vitesse' }, [['1100', 'lent'], ['650', 'normal'], ['250', 'rapide']].map(([v, l]) => h('option', { value: v, selected: v === '650' }, l))),
       h('span', { class: 'count', id: 'pl-count' }, `${Math.max(0, state.step + 1)}/${total}`),
     ));
@@ -1907,7 +2071,7 @@
     const speed = +($('#pl-speed') || { value: 650 }).value;
     state.playing = setInterval(() => gotoStep(state.step + 1), speed);
     const b = $('#pl-play');
-    if (b) { b.textContent = '⏸'; b.setAttribute('aria-label', 'Pause'); }
+    if (b) { b.replaceChildren(icon('pause')); b.setAttribute('aria-label', 'Pause'); }
     gotoStep(state.step + 1);
   }
 
@@ -1915,7 +2079,7 @@
     if (state.playing) clearInterval(state.playing);
     state.playing = null;
     const b = $('#pl-play');
-    if (b) { b.textContent = '▶'; b.setAttribute('aria-label', 'Lecture'); }
+    if (b) { b.replaceChildren(icon('play')); b.setAttribute('aria-label', 'Lecture'); }
   }
 
   // ---- trace
@@ -2063,6 +2227,11 @@
       root.append(h('p', { class: 'muted' }, 'Aucun défi en cours. Lance-en un depuis l’onglet « Défis » ou « Cyber range » du catalogue.'));
       return;
     }
+    if (c.ticket) {
+      root.append(h('div', { class: 'ticket-head' },
+        h('span', { class: 'ticket-id' }, `Ticket #${c.ticket.id}`),
+        h('span', null, `ouvert par ${c.ticket.requester}`)));
+    }
     root.append(
       h('div', { class: 'chal-title' }, c.title),
       h('div', null, h('span', { class: 'pill' }, c.kind === 'range' ? 'cyber range' : 'défi'),
@@ -2103,12 +2272,27 @@
 
   // ------------------------------------------------------------------ disposition : zones, tailles, réglages
 
+  // Disposition choisie par la page hôte (`window.NETIV_LAYOUT`) :
+  // * « lab » : l'épreuve est déjà choisie, le catalogue est replié et le
+  //   panneau Défi ouvert ; ses réglages sont mémorisés à part pour ne pas
+  //   modifier ceux du bac à sable ;
+  // * sinon : l'interface complète.
+  const LAB_LAYOUT = window.NETIV_LAYOUT === 'lab';
+  const UI_KEY = LAB_LAYOUT ? 'netiv.ui.lab' : 'netiv.ui';
   const UI_DEFAULTS = {
-    sideW: 280, panelW: 380, consoleH: 200,
-    hideSide: false, hidePanel: false, hideConsole: false, focus: false,
+    sideW: 280, panelW: 400, consoleH: 200,
+    hideSide: LAB_LAYOUT, hidePanel: false, hideConsole: false, focus: false,
     font: 1, density: 'normal',
   };
-  state.ui = { ...UI_DEFAULTS, ...(store('netiv.ui') || {}) };
+  state.ui = { ...UI_DEFAULTS, ...(store(UI_KEY) || {}) };
+  // Intégrée dans une page (iframe) : la page hôte affiche déjà le logo et le
+  // titre. L'en-tête de NETIV disparaît et ses boutons rejoignent la barre du
+  // réseau (une ligne de moins, pas de logo en double).
+  if (window.NETIV_EMBEDDED) {
+    document.body.classList.add('embedded');
+    $('.stage-bar').append($('.top-actions'));
+  }
+  if (LAB_LAYOUT) document.body.classList.add('layout-lab');
 
   /** Bornes de chaque taille, recalculées selon la fenêtre. */
   function bounds(key) {
@@ -2141,6 +2325,16 @@
     $('#vb-panel').setAttribute('aria-pressed', String(!ui.hidePanel && !ui.focus));
     $('#vb-console').setAttribute('aria-pressed', String(!ui.hideConsole && !ui.focus));
     $('#vb-focus').setAttribute('aria-pressed', String(ui.focus));
+    $('#z-focus').setAttribute('aria-pressed', String(ui.focus));
+    $('#z-focus').title = ui.focus ? 'Rétablir les panneaux  F' : 'Schéma seul (agrandir)  F';
+    const consoleMax = atMax('consoleH');
+    $('#console-max').setAttribute('aria-pressed', String(consoleMax));
+    $('#console-max').title = consoleMax ? 'Rétablir la taille de la console' : 'Agrandir la console';
+    $('#console-max').setAttribute('aria-label', $('#console-max').title);
+    const panelMax = atMax('panelW');
+    $('#panel-wide').setAttribute('aria-pressed', String(panelMax));
+    $('#panel-wide').title = panelMax ? 'Rétablir la largeur du panneau' : 'Élargir le panneau';
+    $('#panel-wide').setAttribute('aria-label', $('#panel-wide').title);
     for (const b of $$('#font-seg button')) b.setAttribute('aria-pressed', String(+b.dataset.font === ui.font));
     for (const b of $$('#density-seg button')) b.setAttribute('aria-pressed', String(b.dataset.density === ui.density));
     $('#console-size').value = String(clampSize('consoleH', ui.consoleH));
@@ -2156,7 +2350,18 @@
   function setUi(patch) {
     Object.assign(state.ui, patch);
     applyUi();
-    store('netiv.ui', state.ui);
+    store(UI_KEY, state.ui);
+  }
+
+  /** La taille `key` est-elle à son maximum ? */
+  function atMax(key) {
+    return clampSize(key, state.ui[key]) >= Math.round(bounds(key)[1]) - 1;
+  }
+
+  /** Agrandit un cadre au maximum, ou le rétablit à sa taille par défaut. */
+  function toggleMax(key) {
+    const show = key === 'consoleH' ? { hideConsole: false } : { hidePanel: false };
+    setUi({ ...show, focus: false, [key]: atMax(key) ? UI_DEFAULTS[key] : bounds(key)[1] });
   }
 
   /** Affiche / masque une zone. Quitter le mode « schéma seul » d'abord. */
@@ -2187,7 +2392,7 @@
         el.removeEventListener('pointermove', move);
         el.classList.remove('dragging');
         document.body.classList.remove('resizing', 'col', 'row');
-        store('netiv.ui', state.ui);
+        store(UI_KEY, state.ui);
       };
       el.addEventListener('pointermove', move);
       el.addEventListener('pointerup', up, { once: true });
@@ -2228,6 +2433,15 @@
     $('#vb-panel').addEventListener('click', () => toggleZone('hidePanel'));
     $('#vb-console').addEventListener('click', () => toggleZone('hideConsole'));
     $('#vb-focus').addEventListener('click', () => setUi({ focus: !state.ui.focus }));
+    $('#z-focus').addEventListener('click', () => setUi({ focus: !state.ui.focus }));
+    $('#console-max').addEventListener('click', () => toggleMax('consoleH'));
+    $('#console-min').addEventListener('click', () => setUi({ consoleH: bounds('consoleH')[0], hideConsole: false }));
+    $('#console-hide').addEventListener('click', () => setUi({ hideConsole: true }));
+    $('#console-clear').addEventListener('click', () => { clear($('#console-out')); clearSuggestions(); $('#console-in').focus(); });
+    $('#panel-wide').addEventListener('click', () => toggleMax('panelW'));
+    $('#panel-hide').addEventListener('click', () => setUi({ hidePanel: true }));
+    // Les bornes dépendent de la fenêtre : recalculer l'état des boutons.
+    window.addEventListener('resize', applyUi);
 
     for (const b of $$('#font-seg button')) b.addEventListener('click', () => setUi({ font: +b.dataset.font }));
     for (const b of $$('#density-seg button')) b.addEventListener('click', () => setUi({ density: b.dataset.density }));
@@ -2301,11 +2515,13 @@
       state.histPos = state.history.length;
       input.value = '';
       guarded(async () => {
-        if (line === 'clear') { clear($('#console-out')); return; }
+        if (line === 'clear') { clear($('#console-out')); clearSuggestions(); return; }
         await runCommand(line);
       });
     });
     $('#console-in').addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.shiftKey && e.target.value.trim()) { e.preventDefault(); complete(e.target); return; }
+      if (e.key !== 'Tab') clearSuggestions();
       if (e.key === 'ArrowUp' && state.histPos > 0) { e.preventDefault(); state.histPos -= 1; e.target.value = state.history[state.histPos]; }
       else if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -2344,12 +2560,16 @@
         });
       } else {
         // Un premier réseau tout de suite, pour que l'écran ne soit pas vide.
-        await guarded(() => createLab({ builtin: 'office' }));
+        // Une page hôte peut choisir lequel (`window.NETIV_START`, par
+        // exemple { challenge: 'beginner-01' }).
+        await guarded(() => createLab(window.NETIV_START || { builtin: 'office' }));
       }
     } catch (e) {
       banner(e.message);
     }
   }
 
-  document.addEventListener('DOMContentLoaded', boot);
+  // Chargé après coup (mode WebAssembly) : la page est déjà prête.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();

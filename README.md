@@ -61,6 +61,7 @@ netiv run topologie.yaml --script lab.txt     # exécute des commandes puis quit
 netiv generate --type campus --routers 5 --hosts 20 --seed 1   # topologie générée
 netiv docs topologie.yaml --format md         # documentation (md, json, yaml)
 netiv serve                                   # API HTTP + interface web sur http://127.0.0.1:8787
+crates/netiv-wasm/build-web.sh                # la même interface, sans serveur (WebAssembly) : docs/wasm.md
 netiv bench                                   # mesures de performance reproductibles
 ```
 
@@ -70,7 +71,7 @@ netiv bench                                   # mesures de performance reproduct
 |---|---|---|
 | Moteur | ARP, ICMP, routage, switch + **VLAN** (access/trunk), **UDP**, **TCP minimal** + service HTTP simulé, **pare-feu/ACL** à état, **DHCP** (relais compris), **DNS** | `ping`, `curl`, `udp`, `port`, `service`, `acl`, `dhcp`, `dns`, `nslookup`, `trace`, `inspect`, `explain` |
 | 4 · Chaos & dépannage | 21 pannes réversibles (L1/L2/L3/services), diagnostic de cause racine, indices à 4 niveaux | `chaos start`, `diagnose`, `hint`, `baseline` |
-| 5 · Éducation | 18 défis, scoring (diagnostic 40 + correction 40 + temps 20 − indices), XP, niveaux, 6 badges, parcours, mode enseignant | `challenge …`, `answer`, `dashboard`, `badges`, `learn`, `course` |
+| 5 · Éducation | 28 défis (dont 10 tickets de support IT), scoring (diagnostic 40 + correction 40 + temps 20 − indices), XP, niveaux, 6 badges, parcours, mode enseignant | `challenge …`, `answer`, `dashboard`, `badges`, `learn`, `course` |
 | 6 · Sécurité | analyseur (SEC-001…011), forensique sur captures `.nlv`, 3 cyber ranges | `security analyze`, `capture save`, `forensic analyze`, `range …` |
 | 7 · Intelligence | tuteur scripté, générateurs de topologies et de défis auto-validés, what-if, score de santé, docs | `tutor`, `topology generate`, `challenge generate`, `what-if`, `health`, `docs` |
 | 8 · Écosystème (local) | labs partageables `.netiv`, classement local, API HTTP, interface web | `lab list/open/export`, `leaderboard`, `netiv serve` |
@@ -144,7 +145,9 @@ Conventions et organisation des tests : [docs/contribuer.md](docs/contribuer.md)
 | `netiv-analysis` | Accessibilité, what-if, score de santé, documentation |
 | `netiv-education` | Défis, scoring, profils, cours, cyber ranges, tuteur |
 | `netiv-cli` | Session (REPL), bibliothèque `netiv_cli` |
-| `netiv-api` | API HTTP (axum) + interface web embarquée |
+| `netiv-service` | Logique de l'API sans HTTP (labs, limites, JSON), partagée avec WebAssembly |
+| `netiv-api` | API HTTP (axum) + interface web embarquée, fine couche sur `netiv-service` |
+| `netiv-wasm` | Moteur dans le navigateur (WebAssembly) : classe JS `NetivEngine`, même API que `netiv serve` |
 | `netiv-bin` | Binaire `netiv` (run, validate, generate, docs, serve, bench) |
 
 Le moteur est **déterministe** : même topologie, mêmes commandes, même graine → trace identique.
