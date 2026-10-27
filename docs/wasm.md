@@ -118,6 +118,7 @@ NETIV → page hôte (`source: 'netiv'`) :
 | `profile` | `profile` (JSON) | le profil a changé (tentative, leçon lue, épreuve réussie) |
 | `challenge-finished` | `kind`, `id`, `title`, `score`, `scoreDetail`, `hintsUsed`, `profile` | une épreuve vient d'être réussie |
 | `lab` | `requestId`, `id`, `text`, `error?` | réponse à `export-lab` |
+| `command` | `line`, `ok`, `error?`, `challenge?` (`kind`, `id`, `hintsUsed`, `answered`, `fixed`, `finished`) | une commande vient d'être exécutée (console ou boutons). Sert au journal d'usage de la plateforme hôte |
 | `error` | `error` | le moteur n'a pas pu démarrer |
 
 **Disposition « lab »** (`layout: 'lab'`) : pour une épreuve imposée par la page hôte, le

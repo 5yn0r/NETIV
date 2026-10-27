@@ -19,6 +19,9 @@
  *   { source: 'netiv', type: 'ready', version }            moteur prêt (attend « init » si host=1)
  *   { source: 'netiv', type: 'profile', profile }          le profil a changé (JSON)
  *   { source: 'netiv', type: 'challenge-finished', kind, id, title, score, scoreDetail, hintsUsed, profile }
+ *   { source: 'netiv', type: 'command', line, ok, error?, challenge? }
+ *     une commande exécutée (console ou boutons) : réussie ou non, le message
+ *     d'erreur, et l'état de l'épreuve en cours (id, indices, diagnostic, objectif)
  *   { source: 'netiv', type: 'lab', requestId, id, text }  réponse à « export-lab »
  *   { source: 'netiv', type: 'error', error }              le moteur n'a pas pu démarrer
  */
@@ -76,9 +79,33 @@ function watch(engine) {
     if (hosted) toHost({ type: 'profile', profile });
     else saveLocalProfile(profile);
   };
+  // Commande exécutée : signalée à l'hôte (journal d'usage de la plateforme).
+  const isExec = (method, path) => method === 'POST' && /\/exec$/.test(path);
+  const lineOf = (body) => {
+    try { return String((typeof body === 'string' ? JSON.parse(body) : body)?.line ?? '').slice(0, 300); } catch (_) { return ''; }
+  };
+  const challengeOf = (snap) => {
+    const ch = snap && snap.challenge;
+    return ch ? { kind: ch.kind, id: ch.id, hintsUsed: ch.hints_used, answered: ch.answered, fixed: ch.fixed, finished: ch.finished } : undefined;
+  };
   return {
     request(method, path, body) {
-      const data = engine.request(method, path, body);
+      let data;
+      try {
+        data = engine.request(method, path, body);
+      } catch (e) {
+        if (isExec(method, path)) toHost({ type: 'command', line: lineOf(body), ok: false, error: String((e && e.error) || e).slice(0, 300) });
+        throw e;
+      }
+      if (isExec(method, path)) {
+        toHost({
+          type: 'command',
+          line: lineOf(body),
+          ok: !data.error,
+          error: data.error ? String(data.error).slice(0, 300) : undefined,
+          challenge: challengeOf(data.snapshot),
+        });
+      }
       const snap = data && data.snapshot;
       const ch = snap && snap.challenge;
       if (ch && ch.finished && ch.score_detail && !finished.has(`${snap.id}:${ch.id}`)) {
