@@ -90,11 +90,15 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
             "ticket": c.ticket,
         })
     });
+    // Console ouverte (CLI Cisco ou terminal de poste) : l'interface adapte l'invite.
+    let console = session
+        .console_info()
+        .map(|c| json!({ "device": c.device, "kind": c.kind, "prompt": c.prompt }));
     let edit_lock = session.edit_lock();
     let Some(sim) = session.simulation() else {
         return json!({
             "id": id, "name": null, "devices": [], "links": [], "time_us": 0,
-            "pending": 0, "trace_len": 0, "challenge": challenge,
+            "pending": 0, "trace_len": 0, "challenge": challenge, "console": console,
             "editable": edit_lock.is_none(), "edit_lock": edit_lock,
         });
     };
@@ -173,6 +177,7 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
         "devices": devices,
         "links": links,
         "challenge": challenge,
+        "console": console,
         "editable": edit_lock.is_none(),
         "edit_lock": edit_lock,
     })

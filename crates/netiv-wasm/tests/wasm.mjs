@@ -87,6 +87,25 @@ test('une topologie se construit et se modifie dans l\'éditeur', () => {
   assert.equal(e.importLab(text).snapshot.devices.length, 2);
 });
 
+test('consoles Cisco et terminal : invite dans l\'instantané, défi résolu', () => {
+  const e = new NetivEngine();
+  const lab = e.request('POST', '/api/labs', { challenge: 'support-01' });
+  assert.equal(lab.snapshot.console, null);
+  let r = exec(e, lab.id, 'console SW1');
+  assert.equal(r.snapshot.console.prompt, 'SW1>');
+  for (const line of ['en', 'conf t', 'int gi0/2']) r = exec(e, lab.id, line);
+  assert.equal(r.snapshot.console.prompt, 'SW1(config-if)#');
+  exec(e, lab.id, 'no shut');
+  exec(e, lab.id, 'end');
+  exec(e, lab.id, 'exit');
+  r = exec(e, lab.id, 'console ACC2');
+  assert.equal(r.snapshot.console.kind, 'host');
+  exec(e, lab.id, 'ipconfig /renew');
+  assert.match(exec(e, lab.id, 'challenge check').output, /Objectif atteint/);
+  r = exec(e, lab.id, 'exit');
+  assert.equal(r.snapshot.console, null);
+});
+
 test('les erreurs remontent en { status, error }', () => {
   const e = new NetivEngine();
   assert.throws(() => e.request('GET', '/api/labs/lab-9'), (err) => err.status === 404 && /lab inconnu/.test(err.error));

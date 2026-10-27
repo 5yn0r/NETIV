@@ -364,6 +364,9 @@ button.t-cmd:hover:not(:disabled) { background: rgba(147, 197, 253, .2); color: 
 .console-form:focus-within { box-shadow: inset 0 1px 0 color-mix(in srgb, var(--term-cmd) 55%, transparent); }
 .prompt { font: 600 0.8571rem var(--mono); color: var(--term-muted); }
 .prompt b { color: var(--term-cmd); margin-left: 2px; }
+.prompt .dialect { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 4px; font-size: 0.7143rem; letter-spacing: .02em; color: var(--term-text); background: color-mix(in srgb, var(--term-cmd) 22%, transparent); vertical-align: 1px; }
+.console-form.in-console .prompt { color: var(--term-cmd); }
+.console-open { font-size: 0.8571rem; }
 .console-form input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--term-text); font: 0.9286rem var(--mono); caret-color: var(--term-cmd); outline: none; padding: 3px 0; }
 .console-form input::placeholder { color: var(--term-muted); opacity: .75; }
 .console-hint { color: var(--term-muted); font-size: 0.75rem; white-space: nowrap; }

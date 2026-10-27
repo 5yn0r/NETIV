@@ -103,6 +103,17 @@ Chaque modification est tracée (`log`) : on voit dans la trace *quand* la confi
 Au chargement d'un réseau, les postes configurés par DHCP demandent leur adresse : ces échanges
 sont les premières transactions de la trace (`trace 1` montre un DORA complet, relais compris).
 
+## Consoles : Cisco IOS et terminal Windows/Linux
+
+En plus de la syntaxe NETIV (qui reste celle par défaut), chaque équipement a une console dans
+sa « vraie » syntaxe. Détails et correspondances : [dialectes.md](dialectes.md).
+
+| Commande | Effet | Exemple |
+|---|---|---|
+| `console <equip>` | Ouvre une console : CLI **Cisco IOS** sur un routeur, un switch ou un pare-feu ; **terminal** (commandes Windows et Linux) sur un poste ou un serveur. L'invite change (`R1>`, `R1#`, `R1(config-if)#`, `PC1:~$`). | `console SW1`, `console ACC2` |
+| `console exit` | Ferme la console (`exit` dans la console fait de même, depuis le niveau le plus haut). | `console exit` |
+| `netiv <commande>` | Exécute une commande NETIV depuis une console. Les commandes de pilotage (`hint`, `challenge …`, `answer`, `trace`, `log`…) marchent même sans ce préfixe. | `netiv show vlan SW1` |
+
 ## Apprendre
 
 | Commande | Effet |

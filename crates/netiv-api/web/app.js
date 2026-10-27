@@ -179,7 +179,7 @@
     'course', 'curl', 'dashboard', 'devices', 'dhcp', 'diagnose', 'dns', 'docs', 'explain', 'forensic', 'forwarding',
     'gateway', 'health', 'help', 'hint', 'iface', 'inspect', 'ip', 'lab', 'latency', 'leaderboard', 'learn', 'load',
     'log', 'loss', 'nslookup', 'ping', 'port', 'range', 'route', 'run', 'security', 'service', 'show', 'step', 'time',
-    'topology', 'trace', 'tutor', 'udp', 'what-if'];
+    'topology', 'trace', 'tutor', 'udp', 'what-if', 'console', 'netiv'];
   const SUBCOMMANDS = {
     show: ['ifaces', 'arp', 'route', 'mac', 'vlan', 'acl', 'services', 'dhcp', 'dns'],
     challenge: ['list', 'start', 'show', 'check', 'finish', 'giveup', 'causes', 'export'],
@@ -189,8 +189,52 @@
     acl: ['add', 'insert', 'del', 'default', 'stateful'],
   };
 
+  // Consoles (Cisco IOS, terminal Windows/Linux) : vocabulaire propre.
+  const PILOT = ['hint', 'answer', 'challenge', 'trace', 'log', 'netiv'];
+  const IOS_WORDS = ['enable', 'disable', 'configure', 'show', 'ping', 'traceroute', 'interface', 'ip', 'no',
+    'shutdown', 'switchport', 'vlan', 'name', 'do', 'end', 'exit', 'copy', 'write'];
+  const IOS_NEXT = {
+    show: ['ip', 'running-config', 'vlan', 'interfaces', 'mac', 'arp', 'access-lists'],
+    configure: ['terminal'],
+    ip: ['address', 'route', 'helper-address', 'interface', 'routing'],
+    no: ['shutdown', 'ip'],
+    switchport: ['mode', 'access', 'trunk'],
+    mode: ['access', 'trunk'],
+    trunk: ['allowed', 'native'],
+    access: ['vlan'],
+  };
+  const HOST_WORDS = ['ipconfig', 'ping', 'tracert', 'traceroute', 'nslookup', 'dig', 'netsh', 'route', 'arp', 'ip',
+    'dhclient', 'resolvectl', 'cat', 'curl', 'hostname', 'exit'];
+  const HOST_NEXT = {
+    ipconfig: ['/all', '/renew', '/release', '/flushdns'],
+    ip: ['a', 'addr', 'route', 'link', 'neigh'],
+    route: ['print', 'add', 'delete'],
+    netsh: ['interface'],
+    arp: ['-a'],
+    cat: ['/etc/resolv.conf'],
+    resolvectl: ['dns', 'revert'],
+  };
+
+  /** Interfaces de l'équipement de la console : noms NETIV et alias Cisco. */
+  function consoleIfaces() {
+    const c = state.snap && state.snap.console;
+    const d = c && state.snap.devices.find((x) => x.name === c.device);
+    if (!d) return [];
+    const base = d.kind === 'switch' ? 1 : 0;
+    return [...d.ifaces.map((i) => i.name), ...d.ifaces.map((_, n) => `Gi0/${n + base}`)];
+  }
+
   /** Candidats pour le mot en cours : commande, sous-commande ou équipement. */
   function candidates(words) {
+    const c = state.snap && state.snap.console;
+    if (c) {
+      const first = c.kind === 'ios' ? IOS_WORDS : HOST_WORDS;
+      if (words.length === 1) return [...first, ...PILOT];
+      const prev = words[words.length - 2].toLowerCase();
+      if (['interface', 'int', 'dev', 'set'].includes(prev)) return consoleIfaces();
+      const next = (c.kind === 'ios' ? IOS_NEXT : HOST_NEXT)[prev];
+      return next || consoleIfaces();
+    }
     if (words.length === 1) return COMMANDS;
     const sub = SUBCOMMANDS[words[0]];
     if (sub && words.length === 2) return [...sub, ...(state.snap ? state.snap.devices.map((d) => d.name) : [])];
@@ -292,11 +336,18 @@
   }
 
   /** Bloc d'une commande : en-tête (invite, commande, heure) puis sortie. */
+  /** Invite actuelle : « netiv » ou celle de la console ouverte (R1(config-if)#). */
+  function currentPrompt() {
+    const c = state.snap && state.snap.console;
+    return c ? c.prompt : null;
+  }
+
   function consoleCommand(line) {
+    const prompt = currentPrompt();
     const now = new Date();
     const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
     const entry = h('div', { class: 'entry' },
-      h('div', { class: 'cmd' }, h('span', { class: 'ps', 'aria-hidden': 'true' }, '›'), h('span', { class: 'line' }, line), h('time', null, time)));
+      h('div', { class: 'cmd' }, h('span', { class: 'ps', 'aria-hidden': 'true' }, prompt ? `${prompt} ` : '›'), h('span', { class: 'line' }, line), h('time', null, time)));
     consoleAppend(entry);
     return entry;
   }
@@ -375,8 +426,29 @@
 
   // ------------------------------------------------------------------ labs
 
+  /** Invite de la ligne de commande : NETIV, ou la console Cisco / terminal ouverte. */
+  function renderPrompt() {
+    const c = state.snap && state.snap.console;
+    const prompt = $('#console-prompt');
+    const form = $('#console-form');
+    const input = $('#console-in');
+    if (!prompt || !form || !input) return;
+    clear(prompt);
+    if (c) {
+      prompt.append(h('span', { class: 'dialect' }, c.kind === 'ios' ? 'Cisco IOS' : 'Terminal'), ` ${c.prompt}`);
+      input.setAttribute('aria-label', `Commande ${c.kind === 'ios' ? 'Cisco IOS' : 'du terminal'} sur ${c.device}`);
+      input.placeholder = c.kind === 'ios' ? 'enable, configure terminal, show ip interface brief… (« ? » : aide, « exit » : retour)' : 'ipconfig /all, ip a, ping… (« help » : aide, « exit » : retour)';
+    } else {
+      prompt.append('netiv', h('b', null, '›'));
+      input.setAttribute('aria-label', 'Commande NETIV');
+      input.placeholder = 'ping PC1 192.168.2.10   (tape « help »)';
+    }
+    form.classList.toggle('in-console', !!c);
+  }
+
   function applySnapshot(snap) {
     state.snap = snap;
+    renderPrompt();
     const lab = state.labs.find((l) => l.id === snap.id);
     if (lab) lab.name = snap.name || lab.name;
     if (snap.challenge && !snap.challenge.finished) {
@@ -1937,9 +2009,17 @@
       root.append(h('p', { class: 'muted' }, 'Clique sur un équipement du schéma pour voir ses interfaces, ses routes, son cache ARP, ses règles…'));
       return;
     }
+    const ios = ['router', 'switch', 'firewall'].includes(d.kind);
     root.append(
       h('h3', null, d.name),
       h('dl', { class: 'kv' }, h('dt', null, 'Type'), h('dd', null, d.kind), h('dt', null, 'Rôle'), h('dd', null, d.role)),
+      h('div', { class: 'btn-row' },
+        h('button', {
+          type: 'button',
+          class: 'console-open',
+          title: ios ? 'Configurer avec les commandes Cisco IOS' : 'Utiliser les commandes Windows et Linux',
+          onclick: async () => { await runCommand(`console ${d.name}`); $('#console-in').focus(); },
+        }, ios ? 'Console Cisco IOS' : 'Terminal Windows / Linux')),
     );
     d.sections.forEach((sec, i) => {
       root.append(h('details', { open: i < 2 }, h('summary', null, sec.title), h('pre', null, sec.text)));

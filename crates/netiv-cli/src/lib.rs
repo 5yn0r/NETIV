@@ -3,5 +3,5 @@
 mod session;
 pub mod storage;
 
-pub use session::{ChallengeInfo, CliError, EditError, Flow, ManualClock, Session};
+pub use session::{ChallengeInfo, CliError, ConsoleInfo, EditError, Flow, ManualClock, Session};
 pub use storage::{FsStorage, MemoryStorage, Storage};

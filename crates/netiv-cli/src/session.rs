@@ -7,6 +7,9 @@ use std::net::Ipv4Addr;
 
 mod build;
 pub use build::EditError;
+mod console;
+pub use console::ConsoleInfo;
+mod dialect;
 mod edu;
 pub use edu::ChallengeInfo;
 mod intel;
@@ -150,6 +153,11 @@ COMMANDES
     acl default <equip> allow|deny             politique par défaut
     acl stateful <equip> on|off                suivi de connexion
 
+  Consoles (en plus de la syntaxe NETIV)
+    console <equip>                CLI Cisco IOS (routeur, switch) ou terminal Windows/Linux (poste)
+    console exit                   ferme la console (ou « exit » dans la console)
+    netiv <commande>               une commande NETIV depuis une console
+
   DHCP et DNS
     dhcp <equip> [renew|release] [iface]       redemande / rend l'adresse obtenue par DHCP
     dhcp server <equip> on|off                 démarre / arrête le serveur DHCP
@@ -184,6 +192,8 @@ pub struct Session {
     storage: Box<dyn Storage>,
     /// Positions des équipements sur le schéma (interface web, labs partagés).
     layout: Layout,
+    /// Console ouverte sur un équipement (Cisco IOS ou terminal de poste).
+    console: Option<console::Console>,
 }
 
 impl Default for Session {
@@ -204,6 +214,7 @@ impl Default for Session {
             sandbox: false,
             storage: default_storage(),
             layout: Layout::new(),
+            console: None,
         }
     }
 }
@@ -463,11 +474,30 @@ impl Session {
     }
 
     fn exec_one(&mut self, line: &str, out: &mut dyn Write) -> Result<Flow, CliError> {
+        // Console ouverte : la ligne est dans le dialecte de l'équipement, sauf
+        // les commandes de pilotage NETIV (défi, observation), qui restent valables.
+        if self.console.is_some() {
+            let verb = line.split_whitespace().next().unwrap_or_default();
+            if !console::PILOT.contains(&verb) {
+                return self.console_line(line, out);
+            }
+            // « netiv <commande> » : une commande NETIV quelconque depuis la console.
+            if verb == "netiv" {
+                let rest = line.trim_start().strip_prefix("netiv").unwrap_or_default();
+                return self.exec_netiv(rest, out);
+            }
+        }
+        self.exec_netiv(line, out)
+    }
+
+    /// Une commande dans la syntaxe NETIV.
+    fn exec_netiv(&mut self, line: &str, out: &mut dyn Write) -> Result<Flow, CliError> {
         let words: Vec<&str> = line.split_whitespace().collect();
         let Some((&cmd, args)) = words.split_first() else {
             return Ok(Flow::Continue);
         };
         match cmd {
+            "console" => self.cmd_console(args, out)?,
             "help" | "?" => write!(out, "{HELP}")?,
             "quit" | "exit" | "q" => return Ok(Flow::Quit),
             "load" => {
