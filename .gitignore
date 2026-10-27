@@ -1,2 +1,11 @@
 /target
 *.nlv
+
+# Secrets : jamais commités (seul un modèle .env.example le serait).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+serviceAccount*.json
