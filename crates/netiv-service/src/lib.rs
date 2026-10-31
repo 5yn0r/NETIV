@@ -370,6 +370,9 @@ pub struct ChallengeEntry {
     pub difficulty: &'static str,
     /// Durée conseillée.
     pub minutes: u32,
+    /// Parcours (`support`, `system`), absent pour un défi réseau.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track: Option<String>,
 }
 
 /// Un cyber range du catalogue.
@@ -887,6 +890,7 @@ impl Service {
                     topic: c.topic.clone(),
                     difficulty: c.difficulty.slug(),
                     minutes: c.time_limit_minutes,
+                    track: c.track.clone(),
                 })
                 .collect(),
             ranges: builtin::ranges()

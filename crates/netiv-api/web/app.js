@@ -48,6 +48,22 @@
     return s('svg', { class: 'ic', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ICONS[name].map((d) => s('path', { d })));
   }
 
+  /** Texte YAML : les retours à la ligne simples deviennent des espaces, les paragraphes restent. */
+  function unwrap(text) {
+    return String(text).trim().replace(/([^\n])\n(?!\n)/g, '$1 ');
+  }
+
+  /** « 3000.000 ms » → « 3 s », « 1.500 ms » → « 1,5 ms » : la colonne reste étroite. */
+  function shortTime(t) {
+    const m = /^([\d.]+)\s*(µs|ms|s)$/.exec(String(t).trim());
+    if (!m) return t;
+    const ms = +m[1] * ({ 'µs': 0.001, ms: 1, s: 1000 }[m[2]]);
+    const fmt = (v) => String(+v.toFixed(3)).replace('.', ',');
+    if (ms >= 1000) return `${fmt(ms / 1000)} s`;
+    if (ms >= 1 || ms === 0) return ms === 0 ? '0' : `${fmt(ms)} ms`;
+    return `${fmt(ms * 1000)} µs`;
+  }
+
   function clear(el) {
     while (el.firstChild) el.removeChild(el.firstChild);
     return el;
@@ -81,6 +97,7 @@
     traceKinds: new Set(),
     traceText: '',
     libTab: 'networks',
+    libDomain: 'all', // filtre des défis : all, network, system, support
     tab: 'device',
     positions: new Map(),
     view: { x: 0, y: 0, w: 1000, h: 560 }, // viewBox du schéma (zoom, déplacement)
@@ -567,7 +584,7 @@
         h('button', { type: 'button', title: 'Ouvrir un fichier .netiv, .yaml ou .json', onclick: () => $('#file-import').click() }, 'Importer un fichier')));
       for (const name of lib.topologies) {
         root.append(h('div', { class: 'item' },
-          h('div', { class: 'name' }, name),
+          h('div', { class: 'name' }, name, TOPO_DESC[name] ? h('small', null, TOPO_DESC[name]) : null),
           libButton('Ouvrir', () => createLab({ builtin: name }))));
       }
       if (lib.labs.length) {
@@ -584,29 +601,60 @@
         h('div', { class: 'form', style: 'padding:0 10px 10px' }, ta,
           libButton('Ouvrir', () => createLab({ yaml: ta.value })))));
     } else if (state.libTab === 'challenges') {
+      const domain = (c) => c.track || 'network';
+      const counts = { all: lib.challenges.length };
+      for (const c of lib.challenges) counts[domain(c)] = (counts[domain(c)] || 0) + 1;
+      const pick = state.libDomain && counts[state.libDomain] ? state.libDomain : 'all';
+      root.append(h('div', { class: 'filters', role: 'group', 'aria-label': 'Domaine' },
+        [['all', 'Tous'], ['network', 'Réseau'], ['system', 'Système'], ['support', 'Support IT']]
+          .filter(([k]) => counts[k])
+          .map(([k, l]) => h('button', {
+            type: 'button', 'aria-pressed': String(pick === k),
+            onclick: () => { state.libDomain = k; renderLibrary(); },
+          }, l, h('span', { class: 'n' }, counts[k])))));
       for (const diff of ['easy', 'medium', 'hard']) {
-        const list = lib.challenges.filter((c) => c.difficulty === diff);
+        const list = lib.challenges.filter((c) => c.difficulty === diff && (pick === 'all' || domain(c) === pick));
         if (!list.length) continue;
         root.append(h('h3', null, { easy: 'Débutant', medium: 'Intermédiaire', hard: 'Avancé' }[diff]));
-        for (const c of list) {
-          root.append(h('div', { class: 'item' },
-            h('div', { class: 'name' }, c.title,
-              h('small', null, h('span', { class: `pill ${diff}` }, diff), h('span', { class: 'pill' }, c.topic), `${c.minutes} min`)),
-            done.has(c.id) ? h('span', { class: 'done', title: `Réussi : ${done.get(c.id)}/100` }, `✓${done.get(c.id)}`) : null,
-            libButton(done.has(c.id) ? 'Rejouer' : 'Jouer', () => createLab({ challenge: c.id }))));
-        }
+        for (const c of list) libItem(root, c, done, done.has(c.id) ? 'Rejouer' : 'Jouer', () => createLab({ challenge: c.id }));
       }
     } else if (state.libTab === 'ranges') {
       root.append(h('p', { class: 'muted' }, "Enquête sur un incident, puis bloque l’attaquant."));
-      for (const r of lib.ranges) {
-        root.append(h('div', { class: 'item' },
-          h('div', { class: 'name' }, r.title, h('small', null, h('span', { class: `pill ${r.difficulty}` }, r.difficulty), `${r.minutes} min`)),
-          done.has(r.id) ? h('span', { class: 'done' }, `✓${done.get(r.id)}`) : null,
-          libButton('Enquêter', () => createLab({ range: r.id }))));
-      }
+      for (const r of lib.ranges) libItem(root, r, done, 'Enquêter', () => createLab({ range: r.id }));
     } else {
       renderGenerate(root, lib);
     }
+  }
+
+  const TOPO_DESC = {
+    office: 'Bureau : switch, deux routeurs, serveur web',
+    dmz: 'Pare-feu, DMZ et VLAN',
+    campus: 'Deux VLAN, trunk, routage inter-VLAN',
+    triangle: 'Trois routeurs, routage statique',
+    cyber: 'Internet, pare-feu, DMZ, LAN, serveurs',
+    dhcp: 'DHCP avec relais, DNS',
+    pme: 'Petite entreprise (tickets de support)',
+    multisite: 'Siège, agence, FAI, VLAN invités',
+  };
+  const DIFF_LABEL = { easy: 'facile', medium: 'moyen', hard: 'difficile' };
+  const TOPIC_LABEL = {
+    physical: 'physique', addressing: 'adressage', switching: 'commutation',
+    routing: 'routage', services: 'services', security: 'sécurité',
+  };
+  const TRACK_LABEL = { support: 'support', system: 'système' };
+
+  /** Une ligne du catalogue : titre, pastilles, score, bouton. */
+  function libItem(root, c, done, action, onclick) {
+    const score = done.get(c.id);
+    root.append(h('div', { class: 'item' },
+      h('div', { class: 'name' }, c.title,
+        h('small', null,
+          h('span', { class: `pill ${c.difficulty}` }, DIFF_LABEL[c.difficulty] || c.difficulty),
+          c.track ? h('span', { class: 'pill track' }, TRACK_LABEL[c.track] || c.track) : null,
+          c.topic ? h('span', { class: 'pill' }, TOPIC_LABEL[c.topic] || c.topic) : null,
+          `${c.minutes} min`)),
+      score !== undefined ? h('span', { class: 'done', title: `Réussi : ${score}/100` }, `✓ ${score}`) : null,
+      libButton(action, onclick)));
   }
 
   function renderGenerate(root, lib) {
@@ -2007,21 +2055,157 @@
       root.append(h('p', { class: 'muted' }, 'Clique sur un équipement du schéma.'));
       return;
     }
+    const x = d.detail || { interfaces: [] };
     const ios = ['router', 'switch', 'firewall'].includes(d.kind);
-    root.append(
-      h('h3', null, d.name),
-      h('dl', { class: 'kv' }, h('dt', null, 'Type'), h('dd', null, d.kind), h('dt', null, 'Rôle'), h('dd', null, d.role)),
-      h('div', { class: 'btn-row' },
-        h('button', {
-          type: 'button',
-          class: 'console-open',
-          title: ios ? 'Configurer avec les commandes Cisco IOS' : 'Utiliser les commandes Windows et Linux',
-          onclick: async () => { await runCommand(`console ${d.name}`); $('#console-in').focus(); },
-        }, ios ? 'Console Cisco IOS' : 'Terminal Windows / Linux')),
-    );
-    d.sections.forEach((sec, i) => {
-      root.append(h('details', { open: i < 2 }, h('summary', null, sec.title), h('pre', null, sec.text)));
-    });
+    const ifs = x.interfaces;
+    const cabled = ifs.filter((i) => i.cable !== null);
+    const broken = ifs.filter((i) => !i.up || i.cable === false);
+    const mainIp = ios ? null : (ifs.find((i) => i.ip) || {}).ip;
+    const zone = { internet: 'Internet', dmz: 'DMZ' }[d.role];
+
+    root.append(h('header', { class: 'dev-head' },
+      s('svg', { viewBox: '-14 -14 28 28', class: `dev-icon kind-${d.kind}`, 'aria-hidden': 'true' }, ...glyph(d.kind)),
+      h('div', { class: 'dev-id' },
+        h('h3', null, d.name),
+        h('div', { class: 'chips' },
+          h('span', { class: 'chip-s' }, KIND_LABEL[d.kind] || d.kind),
+          zone ? h('span', { class: 'chip-s' }, zone) : null,
+          mainIp ? h('span', { class: 'chip-s mono' }, mainIp) : null,
+          broken.length
+            ? h('span', { class: 'chip-s bad' }, `${broken.length} hors service`)
+            : h('span', { class: 'chip-s ok' }, `${cabled.length}/${ifs.length} reliée${ifs.length > 1 ? 's' : ''}`))),
+      h('button', {
+        type: 'button',
+        class: 'console-open',
+        title: ios ? 'Configurer avec les commandes Cisco IOS' : 'Utiliser les commandes Windows et Linux',
+        onclick: async () => { await runCommand(`console ${d.name}`); $('#console-in').focus(); },
+      }, ios ? 'Console IOS' : 'Terminal')));
+
+    // Interfaces ou ports.
+    const alias = (k) => (ios ? `Gi0/${k + (d.kind === 'switch' ? 1 : 0)}` : null);
+    const state_ = (i) => (!i.up ? ['bad', 'éteinte'] : i.cable === false ? ['bad', 'câble coupé'] : i.cable === null ? ['off', 'libre'] : ['ok', 'active']);
+    if (d.kind === 'switch') {
+      devSection(root, 'Ports', ifs.length, table(['Port', 'VLAN', 'Relié à'], ifs.map((i, k) => {
+        const [cls, label] = state_(i);
+        const vlan = i.port.mode === 'access'
+          ? h('span', { class: 'tag' }, `VLAN ${i.port.vlan}`)
+          : h('span', null, h('span', { class: 'tag trunk' }, 'trunk'), ' ', (i.port.allowed.length ? i.port.allowed.join(', ') : 'tous'), h('small', null, ` · natif ${i.port.native}`));
+        return [nameCell(i.name, alias(k)), vlan, peerCell(i, cls, label)];
+      })));
+      if (x.mac_table) {
+        devSection(root, 'Table MAC', x.mac_table.length,
+          x.mac_table.length ? table(['MAC', 'VLAN', 'Port'], x.mac_table.map((m) => [mono(m.mac), m.vlan, m.port]), { limit: 8 })
+            : h('p', { class: 'muted' }, 'Vide : aucune trame reçue.'));
+      }
+    } else {
+      devSection(root, 'Interfaces', ifs.length, table(['Interface', 'Adresse', 'Relié à'], ifs.map((i, k) => {
+        const [cls, label] = state_(i);
+        const ip = i.ip ? mono(i.ip) : h('span', { class: 'muted' }, i.dhcp ? 'DHCP (aucune)' : '—');
+        return [nameCell(i.name, alias(k), i.mac), h('span', null, ip, i.dhcp && i.ip ? h('span', { class: 'tag' }, 'DHCP') : null), peerCell(i, cls, label)];
+      })));
+    }
+    if (x.routes) {
+      devSection(root, 'Routes', x.routes.length, table(['Destination', 'Via', 'Sortie'], x.routes.map((r) => {
+        const o = r.origin;
+        return {
+          cls: r.ok ? null : 'row-bad',
+          title: r.ok ? null : 'Inutilisable : prochain saut hors de tout réseau connecté',
+          cells: [h('span', null, mono(r.dest), h('small', null, ` ${o}`)), r.via ? mono(r.via) : h('span', { class: 'muted' }, 'direct'), r.iface || h('span', { class: 'bad-text' }, 'inutilisable')],
+        };
+      })));
+    }
+    if (x.services && x.services.length) {
+      devSection(root, 'Services', x.services.length, h('div', { class: 'chips' },
+        x.services.map((v) => h('span', { class: 'chip-s svc' }, h('b', null, v.name), ` ${v.proto}/${v.port}`))));
+    }
+    if (x.acl && (x.acl.rules.length || x.acl.default !== 'allow')) {
+      devSection(root, 'Filtrage', x.acl.rules.length, h('div', null,
+        h('div', { class: 'chips' },
+          h('span', { class: `chip-s ${x.acl.default === 'deny' ? 'bad' : 'ok'}` }, `par défaut : ${x.acl.default}`),
+          h('span', { class: 'chip-s' }, `suivi de connexion ${x.acl.stateful ? 'actif' : 'inactif'}`)),
+        x.acl.rules.length
+          ? h('ol', { class: 'rules' }, x.acl.rules.map((r) => {
+            const [rule, comment] = r.text.replace(/^(allow|deny)\s+/, '').split(' — ');
+            return h('li', null, h('span', { class: `act ${r.action}` }, r.action),
+              h('span', null, mono(rule), comment ? h('small', null, comment) : null));
+          }))
+          : h('p', { class: 'muted' }, 'Aucune règle.')));
+    }
+    if (x.dhcp) {
+      const box = h('div', { class: 'stack' });
+      const label = { bound: 'adresse obtenue', pending: 'demande en cours', failed: 'aucun serveur', idle: 'pas encore demandée' };
+      for (const c of x.dhcp.clients) {
+        box.append(h('div', { class: 'line' }, h('span', null, `Client ${c.iface}`),
+          h('span', { class: `chip-s ${c.state === 'bound' ? 'ok' : c.state === 'failed' ? 'bad' : ''}` }, c.ip ? `${label[c.state]} : ${c.ip}` : label[c.state])));
+      }
+      for (const r of x.dhcp.relays) box.append(h('div', { class: 'line' }, h('span', null, `Relais ${r.iface}`), mono(`→ ${r.server}`)));
+      const srv = x.dhcp.server;
+      if (srv) {
+        box.append(h('div', { class: 'line' }, h('span', null, 'Serveur'),
+          h('span', { class: `chip-s ${srv.enabled ? 'ok' : 'bad'}` }, srv.enabled ? 'démarré' : 'arrêté')));
+        for (const p of srv.pools) {
+          const pct = p.size ? Math.round((100 * p.used) / p.size) : 0;
+          box.append(h('div', { class: 'pool' }, mono(p.range),
+            h('div', { class: 'track', role: 'img', 'aria-label': `${p.used} sur ${p.size} attribuées` }, h('div', { class: `fill${pct >= 90 ? ' low' : pct >= 70 ? ' mid' : ''}`, style: `width:${pct}%` })),
+            h('small', null, `${p.used}/${p.size}`)));
+        }
+      }
+      devSection(root, 'DHCP', null, box);
+    }
+    if (x.dns) {
+      const box = h('div', { class: 'stack' },
+        h('div', { class: 'line' }, h('span', null, 'Serveur utilisé'),
+          x.dns.server ? h('span', null, mono(x.dns.server), x.dns.learned ? h('span', { class: 'tag' }, 'DHCP') : null) : h('span', { class: 'chip-s bad' }, 'aucun')));
+      const z = x.dns.hosted;
+      if (z) {
+        box.append(h('div', { class: 'line' }, h('span', null, 'Zone hébergée'),
+          h('span', { class: `chip-s ${z.enabled ? 'ok' : 'bad'}` }, z.enabled ? 'démarrée' : 'arrêtée')));
+        if (z.zone.length) box.append(table(['Nom', 'Adresse'], z.zone.map((r) => [mono(r.name), mono(r.ip)]), { limit: 8 }));
+      }
+      devSection(root, 'DNS', null, box);
+    }
+    if (x.arp) {
+      devSection(root, 'Cache ARP', x.arp.length,
+        x.arp.length ? table(['IP', 'MAC'], x.arp.map((a) => [mono(a.ip), mono(a.mac)]), { limit: 8 })
+          : h('p', { class: 'muted' }, 'Vide : aucun échange récent.'));
+    }
+  }
+
+  /** Section de la fiche d'un équipement : titre, compteur, contenu. */
+  function devSection(root, title, count, body) {
+    root.append(h('section', { class: 'dev-sec' },
+      h('h4', null, title, count !== null && count !== undefined ? h('span', { class: 'count' }, count) : null),
+      body));
+  }
+
+  const mono = (t) => h('span', { class: 'mono' }, t);
+
+  function nameCell(name, alias, mac) {
+    return h('span', { class: 'iface', title: mac ? `MAC ${mac}` : null }, h('b', null, name), alias ? h('small', null, alias) : null);
+  }
+
+  function peerCell(i, cls, label) {
+    return h('span', { class: 'peer' }, h('i', { class: `dot ${cls}`, title: label, 'aria-label': label }),
+      i.peer ? mono(i.peer) : h('span', { class: 'muted' }, label));
+  }
+
+  /**
+   * Tableau compact qui passe à la ligne (jamais de défilement horizontal).
+   * Une ligne : tableau de cellules, ou { cells, cls, title }. Au-delà de
+   * `limit` lignes, un bouton « Tout afficher ».
+   */
+  function table(head, rows, { limit } = {}) {
+    const tb = h('tbody');
+    const all = rows.map((r) => (Array.isArray(r) ? { cells: r } : r));
+    const draw = (n) => {
+      clear(tb);
+      for (const r of all.slice(0, n)) tb.append(h('tr', { class: r.cls, title: r.title }, r.cells.map((c) => h('td', null, c))));
+    };
+    draw(limit || all.length);
+    const t = h('table', { class: 'tbl' }, h('thead', null, h('tr', null, head.map((x) => h('th', { scope: 'col' }, x)))), tb);
+    if (!limit || all.length <= limit) return t;
+    const more = h('button', { type: 'button', class: 'more', onclick: () => { draw(all.length); more.remove(); } }, `Tout afficher (${all.length})`);
+    return h('div', null, t, more);
   }
 
   // ---- parcours (Packet Journey)
@@ -2074,7 +2258,7 @@
     const ol = h('ol', { class: 'steps', id: 'steps' });
     j.steps.forEach((st, i) => {
       ol.append(h('li', { 'data-i': i, class: `k-${st.kind}`, onclick: () => gotoStep(i) },
-        h('span', { class: 't' }, st.time), h('span', { class: 'd' }, st.device), h('span', { class: `k-${st.kind}` }, st.text)));
+        h('span', { class: 't' }, shortTime(st.time)), h('span', { class: 'd' }, st.device), h('span', { class: `x k-${st.kind}` }, st.text)));
     });
     root.append(ol);
     root.onkeydown = (e) => {
@@ -2206,9 +2390,9 @@
       ol.append(h('li', {
         class: `k-${e.kind}`, title: e.trace_id ? `Transaction #${e.trace_id}` : '',
         onclick: () => { if (e.trace_id) guarded(() => openJourney(e.trace_id)); },
-      }, h('span', { class: 't' }, e.time), h('span', { class: 'd' }, e.device), h('span', { class: `k-${e.kind}` }, e.text)));
+      }, h('span', { class: 't' }, shortTime(e.time)), h('span', { class: 'd' }, e.device), h('span', { class: `x k-${e.kind}` }, e.text)));
     }
-    if (!events.length) ol.append(h('li', null, h('span'), h('span'), h('span', { class: 'muted' }, 'Aucun événement ne correspond.')));
+    if (!events.length) ol.append(h('li', null, h('span', { class: 'x muted' }, 'Aucun événement ne correspond.')));
   }
 
   // ---- analyse
@@ -2312,11 +2496,14 @@
     }
     root.append(
       h('div', { class: 'chal-title' }, c.title),
-      h('div', null, h('span', { class: 'pill' }, c.kind === 'range' ? 'cyber range' : 'défi'),
+      h('div', { class: 'chips' }, h('span', { class: 'pill' }, c.kind === 'range' ? 'cyber range' : 'défi'),
         c.finished ? h('span', { class: 'pill' }, c.score !== null && c.score !== undefined ? `terminé · ${c.score}/100` : 'terminé')
           : h('span', null, 'Temps restant : ', h('span', { class: 'timer', id: 'chal-timer' }, formatTime(Math.round((state.deadline - Date.now()) / 1000))))),
-      h('div', { class: 'statement' }, c.description),
-      h('p', { class: 'muted' }, `Indices utilisés : ${c.hints_used}${c.kind === 'challenge' ? ` · objectif atteint : ${c.fixed ? 'oui' : 'non'} · diagnostic : ${c.answered ? 'donné' : 'à donner'}` : ''}`),
+      h('div', { class: 'statement' }, unwrap(c.description)),
+      h('div', { class: 'chips chal-state' },
+        c.kind === 'challenge' ? h('span', { class: `chip-s ${c.fixed ? 'ok' : ''}` }, c.fixed ? 'objectif atteint' : 'objectif pas encore atteint') : null,
+        c.kind === 'challenge' ? h('span', { class: `chip-s ${c.answered ? 'ok' : ''}` }, c.answered ? 'diagnostic donné' : 'diagnostic à donner') : null,
+        h('span', { class: 'chip-s' }, `indices : ${c.hints_used}`)),
     );
     if (c.finished) {
       root.append(h('p', null, 'Épreuve terminée.'));

@@ -1,0 +1,151 @@
+# Multisite : un siège et une agence reliés par une liaison WAN.
+#
+#   Siège                                                     Agence
+#   SW1 ══ tr ══ SW2 (1er étage)                              SW-A
+#    │  employés (VLAN 10), invités (VLAN 30)                  │
+#   R-SIEGE ── WAN 10.0.0.0/30 ─────────────────────────── R-AGENCE
+#    │    └── FAI ── WEB (Internet)
+#   SW3 : SRV-WEB (intranet), SRV-DNS, SRV-APP
+#
+# Les invités (VLAN 30) n'ont que l'accès Internet : R-SIEGE les filtre.
+network: { name: multisite, seed: 73 }
+devices:
+  # Siège : employés et invités.
+  - name: PC-S1
+    type: host
+    interfaces: [{ name: eth0, ip: 192.168.10.11/24 }]
+    gateway: 192.168.10.1
+    dns: 192.168.50.11
+  - name: PC-S2
+    type: host
+    interfaces: [{ name: eth0, ip: 192.168.10.12/24 }]
+    gateway: 192.168.10.1
+    dns: 192.168.50.11
+  - name: INV1
+    type: host
+    interfaces: [{ name: eth0, ip: 192.168.30.21/24 }]
+    gateway: 192.168.30.1
+    dns: 192.168.50.11
+
+  # Switch du rez-de-chaussée, relié au 1er étage par un trunk.
+  - name: SW1
+    type: switch
+    interfaces:
+      - { name: p1, vlan: 10 }
+      - { name: r10, vlan: 10 }
+      - { name: r30, vlan: 30 }
+      - { name: tr, trunk: [10, 30], native_vlan: 1 }
+  - name: SW2
+    type: switch
+    interfaces:
+      - { name: p1, vlan: 10 }
+      - { name: p2, vlan: 30 }
+      - { name: tr, trunk: [10, 30], native_vlan: 1 }
+
+  - name: R-SIEGE
+    type: router
+    interfaces:
+      - { name: eth0, ip: 192.168.10.1/24 }
+      - { name: eth1, ip: 192.168.30.1/24 }
+      - { name: eth2, ip: 192.168.50.1/24 }
+      - { name: eth3, ip: 10.0.0.1/30 }
+      - { name: eth4, ip: 203.0.113.2/29 }
+    gateway: 203.0.113.1
+    routes: [{ dest: 192.168.100.0/24, via: 10.0.0.2 }]
+    acl:
+      default: allow
+      stateful: true
+      rules:
+        - { action: deny, src: 192.168.30.0/24, dst: 192.168.50.0/24, in: eth1, comment: "invités : pas d'accès aux serveurs" }
+        - { action: deny, src: 192.168.30.0/24, dst: 192.168.10.0/24, in: eth1, comment: "invités : pas d'accès aux postes" }
+
+  # Salle serveurs.
+  - name: SW3
+    type: switch
+    ports: 4
+  - name: SRV-WEB
+    type: server
+    interfaces: [{ name: eth0, ip: 192.168.50.10/24 }]
+    gateway: 192.168.50.1
+    services:
+      - { proto: tcp, port: 80, name: http }
+      - { proto: tcp, port: 443, name: https }
+      - { proto: tcp, port: 22, name: ssh }
+      - { proto: tcp, port: 445, name: smb }
+  - name: SRV-DNS
+    type: server
+    interfaces: [{ name: eth0, ip: 192.168.50.11/24 }]
+    gateway: 192.168.50.1
+    dns_server:
+      records:
+        intranet.siege: 192.168.50.10
+        appli.siege: 192.168.50.30
+        www.exemple.ci: 198.51.100.10
+  - name: SRV-APP
+    type: server
+    interfaces: [{ name: eth0, ip: 192.168.50.30/24 }]
+    gateway: 192.168.50.1
+    services: [{ proto: tcp, port: 8080, name: http }]
+
+  # Agence.
+  - name: R-AGENCE
+    type: router
+    interfaces:
+      - { name: eth0, ip: 10.0.0.2/30 }
+      - { name: eth1, ip: 192.168.100.1/24 }
+    routes:
+      - { dest: 192.168.10.0/24, via: 10.0.0.1 }
+      - { dest: 192.168.50.0/24, via: 10.0.0.1 }
+  - name: SW-A
+    type: switch
+    ports: 3
+  - name: PC-A1
+    type: host
+    interfaces: [{ name: eth0, ip: 192.168.100.11/24 }]
+    gateway: 192.168.100.1
+    dns: 192.168.50.11
+  - name: PC-A2
+    type: host
+    interfaces: [{ name: eth0, ip: 192.168.100.12/24 }]
+    gateway: 192.168.100.1
+    dns: 192.168.50.11
+
+  # Internet.
+  - name: FAI
+    type: router
+    role: internet
+    interfaces:
+      - { name: eth0, ip: 203.0.113.1/29 }
+      - { name: eth1, ip: 198.51.100.1/24 }
+    # Le FAI ne route que les réseaux du siège (l'agence sort par le siège en NAT,
+    # non simulé : elle n'a pas Internet ici).
+    routes:
+      - { dest: 192.168.10.0/24, via: 203.0.113.2 }
+      - { dest: 192.168.30.0/24, via: 203.0.113.2 }
+      - { dest: 192.168.50.0/24, via: 203.0.113.2 }
+  - name: WEB
+    type: server
+    role: internet
+    interfaces: [{ name: eth0, ip: 198.51.100.10/24 }]
+    gateway: 198.51.100.1
+    services:
+      - { proto: tcp, port: 80, name: http }
+      - { proto: tcp, port: 4444, name: c2 }
+
+links:
+  - { a: "PC-S1:eth0", b: "SW1:p1" }
+  - { a: "R-SIEGE:eth0", b: "SW1:r10" }
+  - { a: "R-SIEGE:eth1", b: "SW1:r30" }
+  - { a: "SW1:tr", b: "SW2:tr" }
+  - { a: "PC-S2:eth0", b: "SW2:p1" }
+  - { a: "INV1:eth0", b: "SW2:p2" }
+  - { a: "R-SIEGE:eth2", b: "SW3:port1" }
+  - { a: "SRV-WEB:eth0", b: "SW3:port2" }
+  - { a: "SRV-DNS:eth0", b: "SW3:port3" }
+  - { a: "SRV-APP:eth0", b: "SW3:port4" }
+  - { a: "R-SIEGE:eth3", b: "R-AGENCE:eth0" }
+  - { a: "R-AGENCE:eth1", b: "SW-A:port1" }
+  - { a: "PC-A1:eth0", b: "SW-A:port2" }
+  - { a: "PC-A2:eth0", b: "SW-A:port3" }
+  - { a: "R-SIEGE:eth4", b: "FAI:eth0" }
+  - { a: "FAI:eth1", b: "WEB:eth0" }

@@ -105,8 +105,8 @@ fn the_request_router_mirrors_the_http_api() {
     assert_eq!(info["name"], "NETIV");
     assert_eq!(info["persistent"], true);
     let lib = ok(&mut svc, "GET", "/api/library", None);
-    assert_eq!(lib["challenges"].as_array().unwrap().len(), 28);
-    assert_eq!(lib["ranges"].as_array().unwrap().len(), 3);
+    assert_eq!(lib["challenges"].as_array().unwrap().len(), 36);
+    assert_eq!(lib["ranges"].as_array().unwrap().len(), 7);
 
     let created = ok(
         &mut svc,

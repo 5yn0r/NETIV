@@ -85,8 +85,8 @@ mod tests {
     fn the_catalog_lists_every_shipped_challenge_and_range() {
         let c = catalog();
         let count = |k: &str| c.entries.iter().filter(|e| e.kind == k).count();
-        assert_eq!(count("challenge"), 28);
-        assert_eq!(count("range"), 3);
+        assert_eq!(count("challenge"), 36);
+        assert_eq!(count("range"), 7);
         for e in &c.entries {
             assert!(!e.title.is_empty() && !e.description.is_empty(), "{e:?}");
             assert!(["easy", "medium", "hard"].contains(&e.difficulty), "{e:?}");
@@ -103,5 +103,12 @@ mod tests {
             .collect();
         assert_eq!(support.len(), 10);
         assert!(support.iter().all(|e| e.ticket.is_some()), "{support:?}");
+        let system: Vec<_> = c
+            .entries
+            .iter()
+            .filter(|e| e.track.as_deref() == Some("system"))
+            .collect();
+        assert_eq!(system.len(), 4);
+        assert!(system.iter().all(|e| e.ticket.is_some()), "{system:?}");
     }
 }

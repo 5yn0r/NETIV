@@ -5,8 +5,15 @@ use std::sync::OnceLock;
 use crate::challenge::Challenge;
 
 /// Noms des réseaux livrés.
-pub const TOPOLOGY_NAMES: [&str; 7] = [
-    "office", "dmz", "campus", "triangle", "cyber", "dhcp", "pme",
+pub const TOPOLOGY_NAMES: [&str; 8] = [
+    "office",
+    "dmz",
+    "campus",
+    "triangle",
+    "cyber",
+    "dhcp",
+    "pme",
+    "multisite",
 ];
 
 /// Texte YAML d'un réseau livré.
@@ -19,11 +26,12 @@ pub fn topology(name: &str) -> Option<&'static str> {
         "cyber" => include_str!("../../../examples/cyber.yaml"),
         "dhcp" => include_str!("../content/topologies/dhcp.yaml"),
         "pme" => include_str!("../content/topologies/pme.yaml"),
+        "multisite" => include_str!("../content/topologies/multisite.yaml"),
         _ => return None,
     })
 }
 
-const CHALLENGE_SOURCES: [(&str, &str); 28] = [
+const CHALLENGE_SOURCES: [(&str, &str); 36] = [
     (
         "beginner/01-passerelle",
         include_str!("../content/challenges/beginner/01-passerelle.yaml"),
@@ -137,6 +145,39 @@ const CHALLENGE_SOURCES: [(&str, &str); 28] = [
         "advanced/28-support-conflit",
         include_str!("../content/challenges/advanced/28-support-conflit.yaml"),
     ),
+    // Situations réelles en entreprise multisite : réseau, puis système (serveurs).
+    (
+        "beginner/29-reseau-agence",
+        include_str!("../content/challenges/beginner/29-reseau-agence.yaml"),
+    ),
+    (
+        "intermediate/30-reseau-fai",
+        include_str!("../content/challenges/intermediate/30-reseau-fai.yaml"),
+    ),
+    (
+        "intermediate/31-reseau-trunk",
+        include_str!("../content/challenges/intermediate/31-reseau-trunk.yaml"),
+    ),
+    (
+        "advanced/32-reseau-wan",
+        include_str!("../content/challenges/advanced/32-reseau-wan.yaml"),
+    ),
+    (
+        "beginner/33-systeme-web",
+        include_str!("../content/challenges/beginner/33-systeme-web.yaml"),
+    ),
+    (
+        "intermediate/34-systeme-pare-feu",
+        include_str!("../content/challenges/intermediate/34-systeme-pare-feu.yaml"),
+    ),
+    (
+        "intermediate/35-systeme-dns",
+        include_str!("../content/challenges/intermediate/35-systeme-dns.yaml"),
+    ),
+    (
+        "advanced/36-systeme-passerelle",
+        include_str!("../content/challenges/advanced/36-systeme-passerelle.yaml"),
+    ),
 ];
 
 /// Challenges livrés, dans l'ordre. Un fichier illisible est ignoré ici et
@@ -161,10 +202,14 @@ pub fn challenge_sources() -> &'static [(&'static str, &'static str)] {
     &CHALLENGE_SOURCES
 }
 
-const RANGE_SOURCES: [&str; 3] = [
+const RANGE_SOURCES: [&str; 7] = [
     include_str!("../content/range/01-balayage.yaml"),
     include_str!("../content/range/02-rebond.yaml"),
     include_str!("../content/range/03-balise.yaml"),
+    include_str!("../content/range/04-teletravail.yaml"),
+    include_str!("../content/range/05-ssh-lan.yaml"),
+    include_str!("../content/range/06-exfiltration.yaml"),
+    include_str!("../content/range/07-invites.yaml"),
 ];
 
 /// Scénarios de cyber range livrés.

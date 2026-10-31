@@ -71,9 +71,9 @@ netiv bench                                   # mesures de performance reproduct
 |---|---|---|
 | Moteur | ARP, ICMP, routage, switch + **VLAN** (access/trunk), **UDP**, **TCP minimal** + service HTTP simulé, **pare-feu/ACL** à état, **DHCP** (relais compris), **DNS** | `ping`, `curl`, `udp`, `port`, `service`, `acl`, `dhcp`, `dns`, `nslookup`, `trace`, `inspect`, `explain` |
 | 4 · Chaos & dépannage | 21 pannes réversibles (L1/L2/L3/services), diagnostic de cause racine, indices à 4 niveaux | `chaos start`, `diagnose`, `hint`, `baseline` |
-| 5 · Éducation | 28 défis (dont 10 tickets de support IT), scoring (diagnostic 40 + correction 40 + temps 20 − indices), XP, niveaux, 6 badges, parcours, mode enseignant | `challenge …`, `answer`, `dashboard`, `badges`, `learn`, `course` |
+| 5 · Éducation | 36 défis (dont 10 tickets de support IT et 4 tickets système), scoring (diagnostic 40 + correction 40 + temps 20 − indices), XP, niveaux, 6 badges, parcours, mode enseignant | `challenge …`, `answer`, `dashboard`, `badges`, `learn`, `course` |
 | 5 bis · Consoles | En plus de la syntaxe NETIV : CLI **Cisco IOS** sur routeurs et switches, terminal **Windows/Linux** sur les postes ([dialectes](docs/dialectes.md)) | `console R1`, `console PC1` |
-| 6 · Sécurité | analyseur (SEC-001…011), forensique sur captures `.nlv`, 3 cyber ranges | `security analyze`, `capture save`, `forensic analyze`, `range …` |
+| 6 · Sécurité | analyseur (SEC-001…011), forensique sur captures `.nlv`, 7 cyber ranges | `security analyze`, `capture save`, `forensic analyze`, `range …` |
 | 7 · Intelligence | tuteur scripté, générateurs de topologies et de défis auto-validés, what-if, score de santé, docs | `tutor`, `topology generate`, `challenge generate`, `what-if`, `health`, `docs` |
 | 8 · Écosystème (local) | labs partageables `.netiv`, classement local, API HTTP, interface web | `lab list/open/export`, `leaderboard`, `netiv serve` |
 

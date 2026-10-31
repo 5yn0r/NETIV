@@ -87,7 +87,7 @@ Son manque principal : tout pointe vers l'extérieur. Rien n'est pratiqué sur l
 - des outils d'observation : `trace` (parcours d'un paquet), `inspect` (trame couche par couche), `explain` (justification des décisions) ;
 - 21 pannes réversibles, un diagnostic de cause racine, des indices à 4 niveaux ;
 - 18 défis notés (débutant, intermédiaire, avancé), XP, niveaux, badges, parcours, mode enseignant ;
-- un analyseur de sécurité, de la forensique sur captures, 3 cyber ranges ;
+- un analyseur de sécurité, de la forensique sur captures, 7 cyber ranges ;
 - un générateur de topologies et de défis, un « what-if », un score de santé ;
 - une API HTTP (axum) et une interface web en JavaScript natif, servies par `netiv serve`.
 

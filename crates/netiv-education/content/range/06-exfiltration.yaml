@@ -1,0 +1,34 @@
+id: range-06
+title: Le serveur de fichiers appelle dehors
+difficulty: hard
+description: |
+  ALERTE — FILE01 envoie de petits paquets vers Internet à intervalle régulier,
+  sur un port que personne n'utilise. Un serveur de fichiers n'a aucune raison
+  d'appeler Internet.
+
+  Identifie le comportement, puis coupe la sortie sans gêner le partage de
+  fichiers ni la navigation des postes.
+time_limit_minutes: 30
+topology_ref: cyber
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: allow, src: 192.168.20.0/24, dst: 203.0.113.0/24, in: eth3, comment: "mises à jour serveurs" }
+traffic:
+  - { at_s: 2, from: FILE01, to: 203.0.113.10, proto: tcp, ports: [4444], repeat: 8, every_ms: 2500 }
+culprit:
+  device: FILE01
+  behavior: beaconing
+must_block:
+  - { from: FILE01, to: 203.0.113.10, service: { proto: tcp, port: 4444 } }
+  - { from: FILE01, to: 203.0.113.10, service: { proto: tcp, port: 80 } }
+must_work:
+  - { from: PC01, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+  - { from: PC02, to: 203.0.113.10, service: { proto: tcp, port: 80 } }
+  - { from: INET, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
+solution:
+  explanation: |
+    FILE01 contacte 203.0.113.10:4444 toutes les 2,5 secondes : une balise vers un
+    serveur de commande. La règle « mises à jour serveurs » laisse le réseau des
+    serveurs sortir vers Internet sans limite. La retirer referme la sortie.
+  commands: ["acl del FW1 1"]

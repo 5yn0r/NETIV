@@ -1,0 +1,22 @@
+id: reseau-01
+title: L'agence ne voit plus les serveurs
+topic: routing
+difficulty: easy
+description: |
+  Hier soir, le prestataire a remplacé le routeur de l'agence. Ce matin, l'agence
+  n'arrive plus à ouvrir l'intranet. Au siège, tout fonctionne.
+
+  Rends l'intranet (192.168.50.10, port 443) accessible depuis PC-A1.
+time_limit_minutes: 15
+topology_ref: multisite
+objective: { from: PC-A1, to: 192.168.50.10, service: { proto: tcp, port: 443 } }
+faults:
+  - remove_routes: { device: R-AGENCE, dest: 192.168.50.0/24 }
+solution:
+  cause: missing-route
+  device: R-AGENCE
+  explanation: |
+    La configuration remise sur le nouveau routeur a oublié la route vers les
+    serveurs du siège (192.168.50.0/24 via 10.0.0.1). Le poste joint sa passerelle,
+    puis le routeur ne sait plus où envoyer les paquets : « route R-AGENCE » le montre.
+  commands: ["route add R-AGENCE 192.168.50.0/24 via 10.0.0.1"]

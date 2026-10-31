@@ -23,7 +23,7 @@ fn fix(sim: &mut Simulation) {
 #[test]
 fn all_shipped_scenarios_parse_and_are_consistent() {
     assert_eq!(builtin::ranges().len(), builtin::range_sources().len());
-    assert_eq!(builtin::ranges().len(), 3);
+    assert_eq!(builtin::ranges().len(), 7);
     for r in builtin::ranges() {
         let problems = r.problems();
         assert!(problems.is_empty(), "{} : {problems:?}", r.id);

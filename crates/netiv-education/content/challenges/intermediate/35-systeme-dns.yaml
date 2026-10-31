@@ -1,0 +1,24 @@
+id: systeme-03
+title: Après la migration, l'appli ne s'ouvre plus
+topic: services
+difficulty: medium
+track: system
+ticket: { id: "3127", requester: "Diallo, agence" }
+description: |
+  « L'appli métier a changé de serveur hier. Depuis, appli.siege ne s'ouvre
+  plus. Un collègue dit qu'en tapant l'adresse IP, ça marche. »
+
+  Rends l'application (appli.siege, port 8080) accessible depuis PC-A1.
+time_limit_minutes: 20
+topology_ref: multisite
+objective: { from: PC-A1, to: 192.168.50.30, name: appli.siege, service: { proto: tcp, port: 8080 } }
+faults:
+  - dns_record: { device: SRV-DNS, name: appli.siege, ip: "192.168.50.20" }
+solution:
+  cause: dns-record-wrong
+  device: SRV-DNS
+  explanation: |
+    L'enregistrement DNS « appli.siege » pointe encore vers l'ancien serveur
+    (192.168.50.20). « nslookup » donne l'ancienne adresse ; le nouveau serveur est
+    en 192.168.50.30.
+  commands: ["dns record add SRV-DNS appli.siege 192.168.50.30"]

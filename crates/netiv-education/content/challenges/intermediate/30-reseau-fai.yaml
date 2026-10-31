@@ -1,0 +1,22 @@
+id: reseau-02
+title: Plus d'Internet après le changement de box
+topic: routing
+difficulty: medium
+description: |
+  Le FAI a remplacé sa box ce week-end. Depuis, plus personne n'a Internet au siège.
+  Les applications internes marchent toujours.
+
+  Rends www.exemple.ci (198.51.100.10, port 80) accessible depuis PC-S1.
+time_limit_minutes: 20
+topology_ref: multisite
+objective: { from: PC-S1, to: 198.51.100.10, service: { proto: tcp, port: 80 } }
+faults:
+  - set_gateway: { device: R-SIEGE, gateway: 203.0.113.6 }
+solution:
+  cause: wrong-gateway
+  device: R-SIEGE
+  explanation: |
+    La route par défaut du routeur du siège pointe encore vers l'ancienne box
+    (203.0.113.6). La nouvelle répond en 203.0.113.1 : « arp R-SIEGE » et un ping
+    vers les deux adresses le montrent.
+  commands: ["gateway R-SIEGE 203.0.113.1"]

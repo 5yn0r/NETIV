@@ -1,0 +1,23 @@
+id: reseau-03
+title: Le Wi-Fi invités du 1er étage ne marche pas
+topic: switching
+difficulty: medium
+description: |
+  Le VLAN invités (30) vient d'être étendu au 1er étage. Au rez-de-chaussée il
+  fonctionne, mais le poste invité du 1er (INV1) n'obtient rien. Les employés du
+  1er étage, eux, n'ont aucun souci.
+
+  Rends Internet (198.51.100.10, port 80) accessible depuis INV1.
+time_limit_minutes: 20
+topology_ref: multisite
+objective: { from: INV1, to: 198.51.100.10, service: { proto: tcp, port: 80 } }
+faults:
+  - port_trunk: { iface: "SW1:tr", allowed: [10], native: 1 }
+solution:
+  cause: wrong-vlan
+  device: SW1
+  explanation: |
+    Le trunk entre SW1 et SW2 n'autorise que le VLAN 10 côté SW1 : les trames du
+    VLAN 30 sont jetées. « port SW1 » et « port SW2 » montrent des listes différentes
+    aux deux bouts du même câble.
+  commands: ["port SW1 tr trunk 10,30 native 1"]
