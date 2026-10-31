@@ -154,7 +154,7 @@ impl Session {
                 };
                 run.give_up().map_err(run_error)?;
                 let s = run.scenario();
-                writeln!(out, "Scénario abandonné — aucun point. Voici la solution :")?;
+                writeln!(out, "Scénario abandonné, aucun point. Solution :")?;
                 writeln!(
                     out,
                     "Coupable : {} ({})",
@@ -204,18 +204,9 @@ impl Session {
             out,
             "Barème : coupable +40 · correction +40 · temps +20 · indice −10"
         )?;
-        writeln!(out)?;
         writeln!(
             out,
-            "L'incident a déjà eu lieu : tout est dans la trace de la simulation."
-        )?;
-        writeln!(
-            out,
-            "Outils : forensic analyze live, capture save, security analyze, log, trace, show acl FW1…"
-        )?;
-        writeln!(
-            out,
-            "Puis : corrige (acl …), « range check », et désigne le coupable avec « answer <équipement> <comportement> »."
+            "« forensic analyze live » : enquêter · « range check » : vérifier · « answer <équipement> <comportement> »"
         )?;
         writeln!(
             out,
@@ -239,20 +230,14 @@ impl Session {
                     writeln!(out, "  ✗ ce flux légitime est cassé : {f}")?;
                 }
                 if !broken.is_empty() {
-                    writeln!(
-                        out,
-                        "(Une bonne correction bloque l'attaque SANS couper le trafic légitime.)"
-                    )?;
+                    writeln!(out, "Bloque l'attaque sans couper le trafic légitime.")?;
                 }
             }
             RangeCheck::NeedsAnswer => {
+                writeln!(out, "Brèche fermée ✓")?;
                 writeln!(
                     out,
-                    "Brèche fermée ✓ — l'attaque est bloquée et le trafic légitime fonctionne."
-                )?;
-                writeln!(
-                    out,
-                    "Dernière étape : désigne le coupable avec « answer <équipement> <comportement> » (ou « range finish » : −40 points)."
+                    "Reste le coupable : « answer <équipement> <comportement> »."
                 )?;
             }
             RangeCheck::Finished(score) => self.range_report(&score, out)?,

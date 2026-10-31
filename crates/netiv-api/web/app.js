@@ -437,7 +437,7 @@
     if (c) {
       prompt.append(h('span', { class: 'dialect' }, c.kind === 'ios' ? 'Cisco IOS' : 'Terminal'), ` ${c.prompt}`);
       input.setAttribute('aria-label', `Commande ${c.kind === 'ios' ? 'Cisco IOS' : 'du terminal'} sur ${c.device}`);
-      input.placeholder = c.kind === 'ios' ? 'enable, configure terminal, show ip interface brief… (« ? » : aide, « exit » : retour)' : 'ipconfig /all, ip a, ping… (« help » : aide, « exit » : retour)';
+      input.placeholder = c.kind === 'ios' ? 'enable, conf t, sh ip int br…  (« ? » : aide)' : 'ipconfig /all, ip a, ping…  (« help » : aide)';
     } else {
       prompt.append('netiv', h('b', null, '›'));
       input.setAttribute('aria-label', 'Commande NETIV');
@@ -597,7 +597,7 @@
         }
       }
     } else if (state.libTab === 'ranges') {
-      root.append(h('p', { class: 'muted' }, "Un incident a déjà eu lieu : enquête avec la forensique, puis corrige sans couper le trafic légitime."));
+      root.append(h('p', { class: 'muted' }, "Enquête sur un incident, puis bloque l’attaquant."));
       for (const r of lib.ranges) {
         root.append(h('div', { class: 'item' },
           h('div', { class: 'name' }, r.title, h('small', null, h('span', { class: `pill ${r.difficulty}` }, r.difficulty), `${r.minutes} min`)),
@@ -1202,7 +1202,7 @@
   // ---- entrer / sortir
 
   async function enterBuild() {
-    if (!state.current || !state.snap) throw new Error("Ouvre d'abord un lab (ou crée un réseau vide dans le catalogue).");
+    if (!state.current || !state.snap) throw new Error("Aucun lab ouvert : choisis un réseau dans le catalogue.");
     if (state.snap.editable === false) throw new Error(state.snap.edit_lock || 'Ce lab ne peut pas être modifié.');
     const r = await api('GET', `/api/labs/${state.current}/topology`);
     const b = state.build;
@@ -1508,11 +1508,11 @@
     if (b.tool === 'cable') {
       box.append(h('p', { class: 'hint' }, b.cableFrom
         ? `Câble depuis ${b.cableFrom} : clique sur le second équipement (Échap pour annuler).`
-        : 'Outil Câble : clique sur un équipement, puis sur un autre. Une interface libre est choisie de chaque côté.'));
+        : 'Outil Câble : clique sur deux équipements.'));
     }
     if (b.draft) {
       box.append(h('div', { class: 'draft' },
-        h('span', null, 'Brouillon non appliqué : corrige les erreurs ci-dessous (le schéma montre la dernière version valide).'),
+        h('span', null, 'Brouillon non appliqué : corrige les erreurs ci-dessous.'),
         h('button', { type: 'button', onclick: () => guarded(undo) }, 'Abandonner le brouillon')));
     }
     const list = h('ul', { class: 'issue-list' });
@@ -1593,11 +1593,9 @@
       h('p', { class: 'muted' }, `${def.devices.length} équipement(s), ${def.links.length} câble(s).`),
       h('h3', null, 'Pour commencer'),
       h('ol', { class: 'tips' },
-        h('li', null, 'Ajoute des équipements : clic sur la palette, ou glisser-déposer sur le schéma.'),
-        h('li', null, 'Relie-les avec l’outil Câble (touche C) : un clic sur chaque extrémité.'),
-        h('li', null, '« Adresser automatiquement » donne les IP, passerelles et routes manquantes.'),
-        h('li', null, 'Clique un équipement ou un câble pour le configurer ; Suppr le supprime.'),
-        h('li', null, 'Teste avec la barre d’outils (ping) ; Ctrl+Z annule.')),
+        h('li', null, 'Ajoute des équipements depuis la palette.'),
+        h('li', null, 'Relie-les avec l’outil Câble (C).'),
+        h('li', null, '« Adresser automatiquement », puis un ping pour tester.')),
     );
   }
 
@@ -1796,7 +1794,7 @@
           if (v) x.interfaces[k].dhcp_relay = v; else delete x.interfaces[k].dhcp_relay;
         }), { class: 'mono', placeholder: 'aucun (IP du serveur DHCP)' }))));
       root.append(h('h3', null, 'Relais DHCP'),
-        h('p', { class: 'muted' }, 'Une demande DHCP est une diffusion : un routeur ne la transmet que si l’interface du réseau des postes la relaie vers le serveur.'),
+        h('p', { class: 'muted' }, 'Relais : transmet les demandes DHCP de ce réseau au serveur.'),
         h('table', { class: 'grid' }, h('thead', null, h('tr', null, h('th', null, 'Interface'), h('th', null, 'Serveur visé'))), h('tbody', null, rows)));
     }
 
@@ -2006,7 +2004,7 @@
     if (state.build.on) { renderInspector(); return; }
     const root = clear($('#tab-device'));
     if (!d) {
-      root.append(h('p', { class: 'muted' }, 'Clique sur un équipement du schéma pour voir ses interfaces, ses routes, son cache ARP, ses règles…'));
+      root.append(h('p', { class: 'muted' }, 'Clique sur un équipement du schéma.'));
       return;
     }
     const ios = ['router', 'switch', 'firewall'].includes(d.kind);
@@ -2054,7 +2052,7 @@
   function renderJourney() {
     const root = clear($('#tab-journey'));
     if (!state.tx.length) {
-      root.append(h('p', { class: 'muted' }, "Aucun échange pour l'instant. Envoie un ping ou une requête (barre d'outils) : son parcours complet s'affiche ici, étape par étape."));
+      root.append(h('p', { class: 'muted' }, "Envoie un ping pour voir son parcours."));
       return;
     }
     const sel = h('select', { 'aria-label': 'Échange à rejouer', onchange: (e) => guarded(() => openJourney(+e.target.value, { switchTab: false })) },
@@ -2181,7 +2179,7 @@
   function renderTrace() {
     const root = clear($('#tab-trace'));
     if (!state.traceEvents.length) {
-      root.append(h('p', { class: 'muted' }, 'La trace est vide : rien ne s’est encore passé dans ce lab.'));
+      root.append(h('p', { class: 'muted' }, 'Trace vide.'));
       return;
     }
     const filters = h('div', { class: 'filters', role: 'group', 'aria-label': 'Filtres' },
@@ -2304,7 +2302,7 @@
     const root = clear($('#tab-challenge'));
     const c = state.snap && state.snap.challenge;
     if (!c) {
-      root.append(h('p', { class: 'muted' }, 'Aucun défi en cours. Lance-en un depuis l’onglet « Défis » ou « Cyber range » du catalogue.'));
+      root.append(h('p', { class: 'muted' }, 'Aucun défi en cours.'));
       return;
     }
     if (c.ticket) {
@@ -2321,7 +2319,7 @@
       h('p', { class: 'muted' }, `Indices utilisés : ${c.hints_used}${c.kind === 'challenge' ? ` · objectif atteint : ${c.fixed ? 'oui' : 'non'} · diagnostic : ${c.answered ? 'donné' : 'à donner'}` : ''}`),
     );
     if (c.finished) {
-      root.append(h('p', null, 'Épreuve terminée. Les analyses (santé, diagnostic…) sont de nouveau disponibles.'));
+      root.append(h('p', null, 'Épreuve terminée.'));
       return;
     }
     const cmd = c.kind === 'range' ? 'range' : 'challenge';

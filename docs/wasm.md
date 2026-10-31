@@ -41,10 +41,10 @@ Mesurée sur NETIV 0.4.0 (rustc 1.99, wasm-bindgen 0.2, binaryen 133) :
 
 | | Octets |
 |---|---|
-| `.wasm` brut | 2 140 369 (2,04 Mo) |
-| `.wasm` gzip -9 | **766 007 (748 Ko)** |
-| `.wasm` brotli 11 | **569 484 (556 Ko)** |
-| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 820 556 (801 Ko) |
+| `.wasm` brut | 2 135 520 (2,04 Mo) |
+| `.wasm` gzip -9 | **764 393 (746 Ko)** |
+| `.wasm` brotli 11 | **568 282 (555 Ko)** |
+| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 818 475 (799 Ko) |
 
 L'objectif (moins de 1,5 Mo compressé) est atteint sans retirer de module : sécurité,
 forensique, générateurs et cyber ranges sont tous présents. La CI échoue si le module compressé

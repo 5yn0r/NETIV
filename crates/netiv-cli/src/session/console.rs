@@ -64,7 +64,7 @@ pub struct ConsoleInfo {
 }
 
 const HELP_IOS: &str = "\
-Console Cisco IOS (NETIV). Abréviations acceptées (conf t, int gi0/1, sh ip int br, no shut).
+Cisco IOS. Abréviations : conf t, int gi0/1, sh ip int br, no shut.
   enable | disable | configure terminal | end | exit
   show ip interface brief | running-config | ip route | vlan brief | interfaces status
        mac address-table | arp | access-lists
@@ -74,11 +74,11 @@ Console Cisco IOS (NETIV). Abréviations acceptées (conf t, int gi0/1, sh ip in
   (config-if)  ip address <ip> <masque> | ip address dhcp | no ip address | [no] shutdown
                ip helper-address <ip> | switchport mode access|trunk
                switchport access vlan <n> | switchport trunk allowed vlan <liste> | switchport trunk native vlan <n>
-Commandes NETIV toujours disponibles : hint, challenge check, answer, trace, log…  « exit » pour revenir à NETIV.
+Aussi : hint, challenge check, answer, trace, log.  « exit » : retour.
 ";
 
 const HELP_HOST: &str = "\
-Terminal du poste (commandes Windows et Linux).
+Terminal (Windows et Linux).
   Windows : ipconfig [/all|/release|/renew] | ping <cible> [-n N] | tracert | nslookup <nom> | arp -a
             route print | route add <réseau> mask <masque> <passerelle> | route delete <réseau>
             netsh interface ip set address \"<carte>\" static <ip> <masque> [passerelle] | dhcp
@@ -86,7 +86,7 @@ Terminal du poste (commandes Windows et Linux).
   Linux   : ip a | ip link set <if> up|down | ip addr add <ip/préfixe> dev <if> | ip addr flush dev <if>
             ip route | ip route add default via <passerelle> | ip neigh | ping -c N | traceroute
             nslookup | dig | curl | dhclient [-r] [if] | resolvectl dns <if> <serveur> | cat /etc/resolv.conf
-Commandes NETIV toujours disponibles : hint, challenge check, answer, trace, log…  « exit » pour revenir à NETIV.
+Aussi : hint, challenge check, answer, trace, log.  « exit » : retour.
 ";
 
 impl Session {
@@ -109,14 +109,11 @@ impl Session {
             [] => match &self.console {
                 Some(c) => writeln!(
                     out,
-                    "Console ouverte sur {} ({}). « exit » pour revenir à NETIV.",
+                    "Console ouverte sur {} ({}).",
                     c.device,
                     kind_label(c.kind)
                 )?,
-                None => writeln!(
-                    out,
-                    "Aucune console ouverte. « console <équipement> » : CLI Cisco sur un routeur ou un switch, terminal Windows/Linux sur un poste."
-                )?,
+                None => writeln!(out, "Aucune console ouverte (« console <équipement> »).")?,
             },
             ["exit" | "off" | "close"] => {
                 if let Some(c) = self.console.take() {
@@ -143,12 +140,12 @@ impl Session {
                 match kind {
                     ConsoleKind::Ios => writeln!(
                         out,
-                        "Console Cisco IOS de {} (simulation NETIV). « enable » puis « configure terminal » ; « ? » pour l'aide, « exit » pour revenir à NETIV.",
+                        "Console Cisco IOS de {}. « ? » : aide, « exit » : retour.",
                         c.device
                     )?,
                     ConsoleKind::Host => writeln!(
                         out,
-                        "Terminal de {} : commandes Windows (ipconfig, netsh…) et Linux (ip, dhclient…). « help » pour l'aide, « exit » pour revenir à NETIV.",
+                        "Terminal de {} (Windows et Linux). « help » : aide, « exit » : retour.",
                         c.device
                     )?,
                 }

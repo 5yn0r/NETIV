@@ -194,7 +194,7 @@ pub fn not_during_challenge(s: &Session) -> ServiceResult<()> {
     if s.challenge_info().is_some_and(|c| !c.finished) {
         return Err(ServiceError::new(
             ErrorKind::Forbidden,
-            "indisponible pendant un challenge : c'est à toi de trouver",
+            "indisponible pendant un challenge",
         ));
     }
     Ok(())

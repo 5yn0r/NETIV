@@ -151,10 +151,7 @@ impl Session {
         for line in &report {
             writeln!(out, "  {line}")?;
         }
-        writeln!(
-            out,
-            "La trace repart de zéro. Essaie un ping pour vérifier."
-        )?;
+        writeln!(out, "La trace repart de zéro.")?;
         Ok(())
     }
 }

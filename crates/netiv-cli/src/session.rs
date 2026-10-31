@@ -69,108 +69,84 @@ COMMANDES
   Topologie
     load <fichier.yaml>            charge un réseau
     devices                        liste les équipements
-    show ifaces|arp|route <equip>  interfaces, cache ARP, table de routage
-    show mac <switch>              table d'adresses MAC d'un switch
-    show vlan <switch>             mode des ports (access / trunk)
-    show acl|services <equip>      règles de filtrage / services à l'écoute
-    show dhcp|dns <equip>          client, relais et serveur DHCP / serveur DNS, zone
+    show ifaces|arp|route <equip>  interfaces, ARP, routes
+    show mac|vlan <switch>         table MAC, ports access/trunk
+    show acl|services <equip>      filtrage, services
+    show dhcp|dns <equip>          DHCP, DNS
 
   Simulation
-    ping <equip> <ip|nom> [n] [--step]  envoie n pings (1 par défaut) ; un nom est d'abord résolu par DNS
-                                   (--step : programme seulement, avance avec step/run)
-    step [n]                       exécute n événements (1 par défaut) en les détaillant
-    run                            exécute tous les événements en attente
-    curl <equip> <ip|nom> [port]   connexion TCP + requête (port 80 par défaut)
-    udp <equip> <ip|nom> <port> [txt]  datagramme UDP, attend une réponse
-    nslookup <equip> <nom>         résout un nom auprès du serveur DNS de l'équipement
-    time                           date simulée et événements en attente
+    ping <equip> <ip|nom> [n] [--step]  n pings (1 par défaut)
+    step [n]                       exécute n événements
+    run                            exécute tout ce qui attend
+    curl <equip> <ip|nom> [port]   requête TCP (port 80)
+    udp <equip> <ip|nom> <port> [txt]  datagramme UDP
+    nslookup <equip> <nom>         résolution DNS
+    time                           temps simulé
 
   Observer
-    log [n|all]                    derniers événements de trace (20 par défaut)
-    trace <id>                     parcours complet d'une transaction (Packet Journey)
-    inspect <n°>                   détail couche par couche d'une trame (Packet Microscope)
-    explain <n°>                   pourquoi ce choix de route ? (Explain Engine)
+    log [n|all]                    derniers événements
+    trace <id>                     parcours d'un échange
+    inspect <n°>                   détail d'une trame
+    explain <n°>                   pourquoi cette route
 
-  Apprendre
-    learn                          parcours d'apprentissage (learn <parcours>, learn read <n°>, learn next)
-    challenge list [filtre]        challenges (filtre : thème ou facile|moyen|difficile)
-    challenge start <id|fichier>   lance un challenge : une panne cachée à trouver
-    challenge show|check|finish|giveup|causes|export
-    answer <équipement> <cause>    donne ton diagnostic (+40 si juste)
-    dashboard | badges             progression : niveau, XP, thèmes, badges
-    course new|show|validate|export|start|grade   mode enseignant (voir « course »)
+  Défis
+    challenge list|start|show|check|finish|giveup|causes|export
+    answer <équipement> <cause>    ton diagnostic
+    hint                           indice (−10)
+    learn                          parcours d'apprentissage
+    dashboard | badges             progression
+    course new|show|validate|export|start|grade   mode enseignant
+    tutor <question>               explique une notion
 
-  Partager
-    lab list                       labs de la bibliothèque (dossier « labs »)
-    lab open <nom>                 charge un lab de la bibliothèque
-    lab export <fichier.netiv> [titre]   enregistre le réseau actuel comme lab partageable
-    leaderboard                    classement local des profils
-
-  Analyser et générer
-    what-if <scénario>             impact d'un changement : « R1 goes down », « block tcp/443 »,
-                                   « disconnect SW2 », « remove route 10.10.0.0/16 », « cut link R1:eth1 »
-    health                         score de santé (connectivité, adressage, routage, segmentation…)
-    docs md|json|yaml [fichier]    documentation générée du réseau
-    topology generate --type lan|enterprise|campus|datacenter|isp|hybrid|cyber-range
-             --routers N --hosts M [--seed S] [--save fichier.yaml]   génère et charge un réseau
-    topology autoconfig            complète l'adressage : IP, passerelles, routes statiques
-    challenge generate --topic T --difficulty facile|moyen|difficile [--seed N] [--save f.netiv]
-    tutor <question>               explique une notion (gratuit) ou guide sur le challenge en cours
-
-  Sécurité
-    security analyze               défauts de conception (HIGH / MEDIUM / LOW) avec recommandations
-    capture save <fichier.nlv>     enregistre la trace actuelle dans une capture
-    forensic analyze <f.nlv|live> [--packets]   chronologie + anomalies (balayage, rebond, balise...)
-    range list | start <id> | show | check | finish | giveup   cyber range : enquêter puis corriger
-
-  Casser et diagnostiquer
-    chaos start <equip> <ip> [tcp|udp <port>] [--layer l1|l2|l3|services|security]
-                [--difficulty easy|medium|hard] [--seed N] [--visible]
-                                   injecte une panne qui touche ce flux (cachée par défaut)
-    chaos undo | reveal | list     répare tout / révèle les pannes / liste le catalogue
-    diagnose <equip> <ip|nom> [tcp|udp <port>]   cause racine d'un échec (DHCP et DNS compris)
-    hint                           indice suivant (du plus vague à la solution)
-    baseline save|clear            mémorise l'état « sain » pour comparer avec « diagnose »
-
-  Configurer / casser
-    ip <equip> <iface> <cidr|none|dhcp>    change l'adresse IP (dhcp : la demander à un serveur)
-    gateway <equip> <ip|none>              change la passerelle par défaut
-    route add <equip> <cidr> via <ip>      ajoute une route statique
-    route del <equip> <cidr>               supprime les routes vers ce réseau
-    iface <equip> <iface> up|down          active / désactive une interface
-    cable <equip> <iface> cut|restore      coupe / rétablit le câble de cette interface
-    loss <equip> <iface> <0..1>            taux de perte du câble (ex. 0.3 = 30 %)
-    latency <equip> <iface> <ms>           latence du câble
-    forwarding <equip> on|off              transfert de paquets d'un routeur
-    arp <equip> static <ip> <mac> | arp <equip> del <ip>   entrée ARP statique
-    port <switch> <iface> access <vlan>    port d'accès
-    port <switch> <iface> trunk [vlans] [native N]   port trunk (tous les VLAN si vide)
-    service add <equip> tcp|udp <port> <nom>   démarre un service (http, ssh, echo...)
-    service del <equip> tcp|udp <port>         arrête un service
-    acl add <equip> allow|deny [tcp|udp|icmp|any] [src <cidr>] [dst <cidr>] [port <n|a-b>] [in <iface>]
-    acl insert <equip> <n°> <mêmes options>    insère la règle en position n°
-    acl del <equip> <n°>                       supprime la règle n°
-    acl default <equip> allow|deny             politique par défaut
-    acl stateful <equip> on|off                suivi de connexion
-
-  Consoles (en plus de la syntaxe NETIV)
-    console <equip>                CLI Cisco IOS (routeur, switch) ou terminal Windows/Linux (poste)
-    console exit                   ferme la console (ou « exit » dans la console)
-    netiv <commande>               une commande NETIV depuis une console
+  Configurer
+    ip <equip> <iface> <cidr|none|dhcp>   adresse IP
+    gateway <equip> <ip|none>             passerelle
+    route add|del <equip> <cidr> [via <ip>]   route statique
+    iface <equip> <iface> up|down         active / désactive
+    cable <equip> <iface> cut|restore     coupe / rebranche
+    loss <equip> <iface> <0..1>           taux de perte
+    latency <equip> <iface> <ms>          latence
+    forwarding <equip> on|off             routage
+    arp <equip> static <ip> <mac> | del <ip>   ARP statique
+    port <switch> <iface> access <vlan> | trunk [vlans] [native N]
+    service add|del <equip> tcp|udp <port> [nom]   service
+    acl add|insert|del|default|stateful <equip> …   filtrage
 
   DHCP et DNS
-    dhcp <equip> [renew|release] [iface]       redemande / rend l'adresse obtenue par DHCP
-    dhcp server <equip> on|off                 démarre / arrête le serveur DHCP
-    dhcp pool add <equip> <réseau> <première>-<dernière> [gw <ip>] [dns <ip>] [lease <s>]
-    dhcp pool del <equip> <réseau>             supprime une plage
-    dhcp relay <routeur> <iface> <ip|none>     relaie les demandes DHCP de ce réseau vers un serveur
-    dns <equip> <ip|none>                      serveur DNS utilisé par l'équipement
-    dns server <equip> on|off                  démarre / arrête le serveur DNS
-    dns record add <equip> <nom> <ip>          ajoute ou modifie un nom dans la zone
-    dns record del <equip> <nom>               supprime un nom
+    dhcp <equip> [renew|release] [iface]   client DHCP
+    dhcp server <equip> on|off             serveur DHCP
+    dhcp pool add|del <equip> <réseau> …   plages
+    dhcp relay <routeur> <iface> <ip|none> relais
+    dns <equip> <ip|none>                  serveur DNS du poste
+    dns server <equip> on|off              serveur DNS
+    dns record add|del <equip> <nom> [ip]  enregistrements
 
-  Plusieurs commandes sur une ligne : séparer par « ; ».
-  help, quit
+  Pannes et diagnostic
+    chaos start <equip> <ip> [tcp|udp <port>] [--layer …] [--difficulty …] [--visible]
+    chaos undo|reveal|list         répare / révèle / catalogue
+    diagnose <equip> <ip|nom>      cause d'un échec
+    baseline save|clear            état de référence
+
+  Analyse et sécurité
+    what-if <scénario>             ex. « R1 goes down »
+    health                         note de santé du réseau
+    docs md|json|yaml [fichier]    documentation du réseau
+    topology generate|autoconfig   génère un réseau / complète l'adressage
+    security analyze               défauts de conception
+    capture save <fichier.nlv>     enregistre la trace
+    forensic analyze <f.nlv|live>  chronologie, anomalies
+    range list|start|show|check|finish|giveup   cyber range
+
+  Partager
+    lab list|open|export           bibliothèque de labs
+    leaderboard                    classement local
+
+  Consoles
+    console <equip>                Cisco IOS (routeur, switch) ou Windows/Linux (poste)
+    console exit                   ferme la console
+    netiv <commande>               commande NETIV depuis une console
+
+  « ; » sépare plusieurs commandes.  help, quit
 ";
 
 /// Une session : une simulation (éventuellement) chargée.
@@ -1138,7 +1114,7 @@ impl Session {
         } else {
             writeln!(
                 out,
-                "Une panne a été injectée (difficulté : {}). Le flux est peut-être cassé : à toi de trouver pourquoi.",
+                "Une panne a été injectée (difficulté : {}). Le flux est peut-être cassé.",
                 inj.difficulty.slug()
             )?;
             writeln!(
