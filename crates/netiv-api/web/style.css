@@ -400,8 +400,6 @@ body.layout-lab .tabs [data-tab="challenge"] { order: -1; }
 /* La seule zone qui défile dans le panneau ; son contenu passe à la ligne. */
 .tab-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: var(--pad); min-height: 0; container-type: inline-size; overflow-wrap: anywhere; }
 .tab-body[hidden] { display: none; }
-.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0 0 10px; }
-.kv dt { color: var(--muted); } .kv dd { margin: 0; }
 details { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; background: var(--surface); }
 details > summary { cursor: pointer; padding: 7px 10px; font-weight: 600; }
 details > pre { padding: 4px 10px 10px; }

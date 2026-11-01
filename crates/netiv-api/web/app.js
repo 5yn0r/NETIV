@@ -2083,10 +2083,10 @@
 
     // Interfaces ou ports.
     const alias = (k) => (ios ? `Gi0/${k + (d.kind === 'switch' ? 1 : 0)}` : null);
-    const state_ = (i) => (!i.up ? ['bad', 'éteinte'] : i.cable === false ? ['bad', 'câble coupé'] : i.cable === null ? ['off', 'libre'] : ['ok', 'active']);
+    const linkState = (i) => (!i.up ? ['bad', 'éteinte'] : i.cable === false ? ['bad', 'câble coupé'] : i.cable === null ? ['off', 'libre'] : ['ok', 'active']);
     if (d.kind === 'switch') {
       devSection(root, 'Ports', ifs.length, table(['Port', 'VLAN', 'Relié à'], ifs.map((i, k) => {
-        const [cls, label] = state_(i);
+        const [cls, label] = linkState(i);
         const vlan = i.port.mode === 'access'
           ? h('span', { class: 'tag' }, `VLAN ${i.port.vlan}`)
           : h('span', null, h('span', { class: 'tag trunk' }, 'trunk'), ' ', (i.port.allowed.length ? i.port.allowed.join(', ') : 'tous'), h('small', null, ` · natif ${i.port.native}`));
@@ -2099,7 +2099,7 @@
       }
     } else {
       devSection(root, 'Interfaces', ifs.length, table(['Interface', 'Adresse', 'Relié à'], ifs.map((i, k) => {
-        const [cls, label] = state_(i);
+        const [cls, label] = linkState(i);
         const ip = i.ip ? mono(i.ip) : h('span', { class: 'muted' }, i.dhcp ? 'DHCP (aucune)' : '—');
         return [nameCell(i.name, alias(k), i.mac), h('span', null, ip, i.dhcp && i.ip ? h('span', { class: 'tag' }, 'DHCP') : null), peerCell(i, cls, label)];
       })));
