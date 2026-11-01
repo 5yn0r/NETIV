@@ -17,7 +17,7 @@ description: |
   PC1 n'arrive plus à joindre le serveur (192.168.2.10), alors que PC2 y arrivait
   ce matin. Trouve ce qui ne va pas sur PC1 et corrige-le.
 time_limit_minutes: 15
-topology_ref: office       # réseau livré (office, dmz, campus, triangle, cyber, pme…)…
+topology_ref: office       # réseau livré (office, dmz, campus, triangle, cyber, pme, multisite…)…
 # topology: { ... }        # … ou réseau complet en ligne (voir format-topologie.md)
 objective: { from: PC1, to: 192.168.2.10 }   # ping ; pour un service :
 # objective: { from: PC1, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
@@ -40,7 +40,7 @@ Un défi peut se présenter comme un ticket d'assistance : un utilisateur décri
 cherche la cause. Deux champs facultatifs, repris dans le catalogue :
 
 ```yaml
-track: support                              # parcours « Support IT »
+track: support                              # parcours « Support IT » (ou « system » : serveurs)
 ticket: { id: "1042", requester: "Awa, accueil" }
 ```
 
@@ -49,6 +49,9 @@ Avec `name` dans l'objectif, l'objectif n'est atteint que si `from` résout ce n
 le poste) casse donc l'objectif, et le diagnostic cherche aussi du côté du DNS.
 
 Les 10 tickets livrés (`support-01` à `support-10`, niveaux 1 et 2) utilisent le réseau `pme`.
+Le réseau `multisite` (siège, agence, FAI, salle serveurs, VLAN invités) porte les défis
+`reseau-01` à `reseau-04`, les tickets système `systeme-01` à `systeme-04` (`track: system`)
+et le cyber range `range-07`.
 
 Lancer un défi écrit à la main : `challenge start mon-defi.yaml`. Le partager :
 `challenge export mon-defi.netiv` pendant qu'il est en cours.

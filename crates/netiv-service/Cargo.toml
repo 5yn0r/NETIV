@@ -21,7 +21,6 @@ netiv-education = { workspace = true }
 netiv-cli = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml_ng = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

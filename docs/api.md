@@ -101,6 +101,10 @@ Pendant un défi, `challenge` vaut par exemple
 "hints_used": 0, "answered": false, "fixed": false, "finished": false, "score": null,
 "score_detail": null}`.
 
+Quand une console est ouverte (`console <équipement>`), `console` vaut par exemple
+`{"device": "R1", "kind": "ios", "prompt": "R1(config-if)#"}` (`kind` : `ios` ou `host`) ; sinon
+`null`. L'interface s'en sert pour l'invite de la console.
+
 Une fois l'épreuve réussie, `score` donne le total (défis seulement) et `score_detail` le détail,
 pour un défi comme pour un cyber range : `{"diagnosis": 40, "fix": 40, "time": 15,
 "hint_penalty": 10, "total": 85, "xp": 85, "elapsed_secs": 240, "hints": 1}`.

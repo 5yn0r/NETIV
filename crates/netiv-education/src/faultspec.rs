@@ -489,7 +489,6 @@ mod tests {
     /// Les enums s'écrivent `nom: { champs }` dans les fichiers de challenge.
     #[derive(Serialize, Deserialize)]
     struct Wrap {
-        #[serde(with = "serde_yaml_ng::with::singleton_map_recursive")]
         fault: FaultSpec,
     }
 
@@ -585,11 +584,11 @@ mod tests {
         for f in faults {
             let spec = FaultSpec::from_fault(&sim, &f);
             // Via YAML, comme dans un fichier de challenge.
-            let yaml = serde_yaml_ng::to_string(&Wrap {
+            let yaml = netiv_topology::yaml::to_string(&Wrap {
                 fault: spec.clone(),
             })
             .unwrap();
-            let back: Wrap = serde_yaml_ng::from_str(&yaml).unwrap();
+            let back: Wrap = netiv_topology::yaml::from_str(&yaml).unwrap();
             assert_eq!(back.fault, spec, "{yaml}");
             assert_eq!(back.fault.resolve(&sim).unwrap(), f, "{yaml}");
         }
@@ -597,7 +596,7 @@ mod tests {
 
     #[test]
     fn readable_yaml_form() {
-        let spec: Wrap = serde_yaml_ng::from_str(
+        let spec: Wrap = netiv_topology::yaml::from_str(
             "fault:\n  set_gateway: { device: PC1, gateway: 192.168.1.254 }",
         )
         .unwrap();
@@ -608,7 +607,7 @@ mod tests {
                 gateway: Some("192.168.1.254".into())
             }
         );
-        let multi: Wrap = serde_yaml_ng::from_str(
+        let multi: Wrap = netiv_topology::yaml::from_str(
             "fault:\n  multi:\n    - link_down: { a: \"R1:eth1\" }\n    - forwarding_off: { device: R2 }",
         )
         .unwrap();
@@ -656,11 +655,11 @@ mod tests {
     #[test]
     fn typos_in_field_names_are_rejected() {
         assert!(
-            serde_yaml_ng::from_str::<Wrap>(
+            netiv_topology::yaml::from_str::<Wrap>(
                 "fault:\n  set_gateway: { device: PC1, gatewey: 1.1.1.1 }"
             )
             .is_err()
         );
-        assert!(serde_yaml_ng::from_str::<Wrap>("fault:\n  explode: {}").is_err());
+        assert!(netiv_topology::yaml::from_str::<Wrap>("fault:\n  explode: {}").is_err());
     }
 }

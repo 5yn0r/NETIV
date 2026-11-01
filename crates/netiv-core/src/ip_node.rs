@@ -325,10 +325,10 @@ impl IpNode {
         match kind {
             TimerKind::PingNext { id } => self.send_echo(ctx, out, id),
             TimerKind::PingTimeout { id, seq } => {
-                if let Some(s) = self.pings.get_mut(&id) {
-                    if let Some(o) = s.outstanding.remove(&seq) {
-                        out.trace(Some(o.trace_id), TraceKind::PingTimeout { dst: s.dst, seq });
-                    }
+                if let Some(s) = self.pings.get_mut(&id)
+                    && let Some(o) = s.outstanding.remove(&seq)
+                {
+                    out.trace(Some(o.trace_id), TraceKind::PingTimeout { dst: s.dst, seq });
                 }
                 self.finish_if_done(id);
             }
@@ -765,18 +765,18 @@ impl IpNode {
                 self.originate(ctx, out, Some(packet.dst), packet.src, reply, tid);
             }
             IcmpMessage::EchoReply { id, seq } => {
-                if let Some(s) = self.pings.get_mut(id) {
-                    if let Some(o) = s.outstanding.remove(seq) {
-                        out.trace(
-                            Some(tid),
-                            TraceKind::PingReply {
-                                from: packet.src,
-                                seq: *seq,
-                                ttl: packet.ttl,
-                                rtt: ctx.now.saturating_since(o.sent_at),
-                            },
-                        );
-                    }
+                if let Some(s) = self.pings.get_mut(id)
+                    && let Some(o) = s.outstanding.remove(seq)
+                {
+                    out.trace(
+                        Some(tid),
+                        TraceKind::PingReply {
+                            from: packet.src,
+                            seq: *seq,
+                            ttl: packet.ttl,
+                            rtt: ctx.now.saturating_since(o.sent_at),
+                        },
+                    );
                 }
                 self.finish_if_done(*id);
             }
@@ -805,33 +805,33 @@ impl IpNode {
     ) {
         match &original.payload {
             IpPayload::Icmp(IcmpMessage::EchoRequest { id, seq }) => {
-                if let Some(s) = self.pings.get_mut(id) {
-                    if s.outstanding.remove(seq).is_some() {
-                        out.trace(
-                            Some(tid),
-                            TraceKind::PingError {
-                                from,
-                                seq: *seq,
-                                error,
-                            },
-                        );
-                    }
+                if let Some(s) = self.pings.get_mut(id)
+                    && s.outstanding.remove(seq).is_some()
+                {
+                    out.trace(
+                        Some(tid),
+                        TraceKind::PingError {
+                            from,
+                            seq: *seq,
+                            error,
+                        },
+                    );
                 }
                 self.finish_if_done(*id);
             }
             IpPayload::Tcp(seg) => {
                 let key = (original.src, seg.src_port, original.dst, seg.dst_port);
-                if self.tcp.get(&key).is_some_and(|c| c.client) {
-                    if let Some(c) = self.tcp.remove(&key) {
-                        out.trace(
-                            Some(c.trace_id),
-                            TraceKind::CurlResult {
-                                dst: original.dst,
-                                port: seg.dst_port,
-                                outcome: CurlOutcome::Error(error),
-                            },
-                        );
-                    }
+                if self.tcp.get(&key).is_some_and(|c| c.client)
+                    && let Some(c) = self.tcp.remove(&key)
+                {
+                    out.trace(
+                        Some(c.trace_id),
+                        TraceKind::CurlResult {
+                            dst: original.dst,
+                            port: seg.dst_port,
+                            outcome: CurlOutcome::Error(error),
+                        },
+                    );
                 }
             }
             IpPayload::Udp(u)
@@ -955,23 +955,24 @@ impl IpNode {
         }
         let broadcast = is_broadcast_for(ctx, ingress, packet.dst);
         // Réponse à une requête que nous avons envoyée ?
-        if let Some(p) = self.udp_pending.get(&u.dst_port) {
-            if p.dst == packet.src && p.port == u.src_port {
-                let p = self.udp_pending.remove(&u.dst_port);
-                if let Some(p) = p {
-                    out.trace(
-                        Some(tid),
-                        TraceKind::UdpResult {
-                            dst: p.dst,
-                            port: p.port,
-                            outcome: UdpOutcome::Reply {
-                                data: u.payload.text(),
-                            },
+        if let Some(p) = self.udp_pending.get(&u.dst_port)
+            && p.dst == packet.src
+            && p.port == u.src_port
+        {
+            let p = self.udp_pending.remove(&u.dst_port);
+            if let Some(p) = p {
+                out.trace(
+                    Some(tid),
+                    TraceKind::UdpResult {
+                        dst: p.dst,
+                        port: p.port,
+                        outcome: UdpOutcome::Reply {
+                            data: u.payload.text(),
                         },
-                    );
-                }
-                return;
+                    },
+                );
             }
+            return;
         }
         let svc = self
             .services

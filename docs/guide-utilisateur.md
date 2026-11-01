@@ -120,6 +120,36 @@ netiv> diagnose PC1 web.lan     # contrôle la résolution DNS puis le chemin
 Trois défis (`beginner-06`, `intermediate-06`, `advanced-06`) portent sur un serveur arrêté, un
 relais oublié et un serveur DHCP pirate.
 
+## 6 bis. Consoles Cisco et Windows/Linux
+
+La syntaxe NETIV est faite pour apprendre vite. Pour s'entraîner aux **vraies commandes** (CCNA,
+support informatique), chaque équipement a aussi une console :
+
+```text
+netiv> console SW1
+SW1> enable
+SW1# configure terminal
+SW1(config)# interface gi0/2
+SW1(config-if)# no shutdown
+SW1(config-if)# end
+SW1# show ip interface brief
+SW1# exit
+netiv> console ACC2
+ACC2:~$ ipconfig /renew
+ACC2:~$ exit
+```
+
+- Routeurs, switches et pare-feu : **CLI Cisco IOS** (modes, abréviations comme `conf t` ou
+  `sh ip int br`, `show running-config`, `switchport`, `ip route`, `ip helper-address`…).
+- Postes et serveurs : un **terminal** qui comprend les commandes **Windows** (`ipconfig`,
+  `netsh`, `route`, `tracert`) et **Linux** (`ip a`, `ip route`, `dhclient`, `resolvectl`).
+- Les interfaces se désignent par leur nom NETIV (`eth0`, `p2`) ou à la Cisco (`Gi0/2`) :
+  `show ip interface brief` donne la correspondance.
+- Pendant un défi, `hint`, `challenge check` et `answer` marchent toujours dans la console : on
+  peut résoudre un défi entièrement avec les commandes Cisco ou Windows/Linux.
+
+La liste complète est dans [dialectes.md](dialectes.md).
+
 ## 7. L'interface web
 
 `netiv serve` ouvre l'interface sur <http://127.0.0.1:8787>.

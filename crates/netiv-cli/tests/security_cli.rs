@@ -141,12 +141,15 @@ fn every_range_scenario_is_solved_by_its_documented_commands_for_a_perfect_score
             r.id
         );
         // Les outils qui donnent la réponse sont verrouillés ; les outils d'enquête, non.
+        let legit = &r.must_work[0];
         assert!(
-            fail(&mut s, "diagnose PC01 10.9.0.10").contains("indisponible pendant un challenge")
+            fail(&mut s, &format!("diagnose {} {}", legit.from, legit.to))
+                .contains("indisponible pendant un challenge")
         );
         run(&mut s, "forensic analyze live");
         run(&mut s, "security analyze");
-        run(&mut s, "show acl FW1");
+        let filter = r.solution.commands[0].split_whitespace().nth(2).unwrap();
+        run(&mut s, &format!("show acl {filter}"));
 
         clock.set(50_090);
         run(&mut s, &r.solution.commands.join(" ; "));
@@ -262,7 +265,7 @@ fn security_scenarios_unlock_the_network_defender_badge_and_count_in_the_dashboa
     );
     let dash = run(&mut s, "dashboard");
     assert!(
-        dash.contains("Sécurité") && dash.contains("(2/6)"),
+        dash.contains("Sécurité") && dash.contains("(2/10)"),
         "{dash}"
     );
     assert!(dash.contains("Network Defender"), "{dash}");

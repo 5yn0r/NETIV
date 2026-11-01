@@ -1,6 +1,7 @@
 //! Catalogue des épreuves livrées (challenges et cyber ranges), pour les
 //! plateformes qui les présentent hors du simulateur : pages de catalogue,
-//! référencement, filtres. Il ne contient aucune solution.
+//! référencement, filtres. Il ne contient aucune solution : elles sont à part
+//! (`solutions`), pour le seul serveur de la plateforme (tuteur, explications).
 
 use netiv_education::{Ticket, builtin};
 use serde::Serialize;
@@ -77,6 +78,45 @@ pub fn catalog() -> Catalog {
     }
 }
 
+/// La solution d'une épreuve : réservée au serveur de la plateforme, jamais
+/// envoyée au navigateur.
+#[derive(Debug, Clone, Serialize)]
+pub struct SolutionEntry {
+    /// Identifiant de l'épreuve.
+    pub id: String,
+    /// `challenge` ou `range`.
+    pub kind: &'static str,
+    /// Équipement en faute (challenge) ou machine coupable (range).
+    pub device: String,
+    /// Cause (`wrong-gateway`…) ou comportement (`port-scan`…).
+    pub cause: String,
+    /// Explication de la panne ou de l'attaque.
+    pub explanation: String,
+    /// Commandes NETIV qui corrigent.
+    pub commands: Vec<String>,
+}
+
+/// Les solutions des épreuves livrées, dans l'ordre du catalogue.
+pub fn solutions() -> Vec<SolutionEntry> {
+    let challenges = builtin::challenges().iter().map(|c| SolutionEntry {
+        id: c.id.clone(),
+        kind: "challenge",
+        device: c.solution.device.clone(),
+        cause: c.solution.cause.clone(),
+        explanation: c.solution.explanation.trim().to_string(),
+        commands: c.solution.commands.clone(),
+    });
+    let ranges = builtin::ranges().iter().map(|r| SolutionEntry {
+        id: r.id.clone(),
+        kind: "range",
+        device: r.culprit.device.clone(),
+        cause: r.culprit.behavior.clone(),
+        explanation: r.solution.explanation.trim().to_string(),
+        commands: r.solution.commands.clone(),
+    });
+    challenges.chain(ranges).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,8 +125,8 @@ mod tests {
     fn the_catalog_lists_every_shipped_challenge_and_range() {
         let c = catalog();
         let count = |k: &str| c.entries.iter().filter(|e| e.kind == k).count();
-        assert_eq!(count("challenge"), 28);
-        assert_eq!(count("range"), 3);
+        assert_eq!(count("challenge"), 36);
+        assert_eq!(count("range"), 7);
         for e in &c.entries {
             assert!(!e.title.is_empty() && !e.description.is_empty(), "{e:?}");
             assert!(["easy", "medium", "hard"].contains(&e.difficulty), "{e:?}");
@@ -103,5 +143,22 @@ mod tests {
             .collect();
         assert_eq!(support.len(), 10);
         assert!(support.iter().all(|e| e.ticket.is_some()), "{support:?}");
+        let system: Vec<_> = c
+            .entries
+            .iter()
+            .filter(|e| e.track.as_deref() == Some("system"))
+            .collect();
+        assert_eq!(system.len(), 4);
+        let sol = solutions();
+        assert_eq!(
+            sol.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+            c.entries.iter().map(|e| e.id.as_str()).collect::<Vec<_>>()
+        );
+        assert!(
+            sol.iter().all(|s| !s.cause.is_empty()
+                && !s.explanation.is_empty()
+                && !s.commands.is_empty())
+        );
+        assert!(system.iter().all(|e| e.ticket.is_some()), "{system:?}");
     }
 }

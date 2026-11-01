@@ -40,7 +40,7 @@ pub struct ChallengeInfo {
     pub ticket: Option<Ticket>,
 }
 
-const LOCKED: &str = "indisponible pendant un challenge : c'est à toi de trouver (« hint » si tu bloques, −10 points)";
+const LOCKED: &str = "indisponible pendant un challenge (« hint » : indice, −10)";
 
 fn run_error(e: RunError) -> CliError {
     CliError(e.to_string())
@@ -286,14 +286,9 @@ impl Session {
             out,
             "Barème   : diagnostic +40 · correction +40 · temps +20 · indice −10"
         )?;
-        writeln!(out)?;
         writeln!(
             out,
-            "Outils : ping, curl, trace, log, show …, puis « answer <équipement> <cause> » et « challenge check »."
-        )?;
-        writeln!(
-            out,
-            "(« challenge causes » liste les natures de panne ; « hint » donne un indice.)"
+            "« challenge check » : vérifier · « answer <équipement> <cause> » : diagnostic"
         )?;
         Ok(())
     }
@@ -337,16 +332,13 @@ impl Session {
         };
         match run.check(sim, now).map_err(run_error)? {
             CheckOutcome::NotYet { replies, sent } => {
-                writeln!(
-                    out,
-                    "Pas encore : l'objectif ne répond que {replies}/{sent} fois. Continue de chercher."
-                )?;
+                writeln!(out, "Pas encore : l'objectif répond {replies}/{sent} fois.")?;
             }
             CheckOutcome::NeedsAnswer => {
-                writeln!(out, "Objectif atteint ✓ — le réseau fonctionne de nouveau.")?;
+                writeln!(out, "Objectif atteint ✓")?;
                 writeln!(
                     out,
-                    "Dernière étape : explique la cause avec « answer <équipement> <cause> » (ou « challenge finish » pour terminer sans diagnostic : −40 points)."
+                    "Reste le diagnostic : « answer <équipement> <cause> »."
                 )?;
             }
             CheckOutcome::Finished(score) => self.finish_report(&score, out)?,
@@ -369,10 +361,7 @@ impl Session {
         };
         run.give_up().map_err(run_error)?;
         let c = run.challenge();
-        writeln!(
-            out,
-            "Challenge abandonné — aucun point. Voici la solution :"
-        )?;
+        writeln!(out, "Challenge abandonné, aucun point. Solution :")?;
         writeln!(out, "{}", c.solution.explanation.trim_end())?;
         if !c.solution.commands.is_empty() {
             writeln!(out, "Commandes : {}", c.solution.commands.join(" ; "))?;
@@ -482,7 +471,7 @@ impl Session {
             AnswerOutcome::Correct(None) => {
                 writeln!(
                     out,
-                    "Diagnostic correct ✓ (+40). Il reste à réparer : « challenge check » quand c'est fait."
+                    "Diagnostic correct ✓ (+40). Reste à réparer, puis « challenge check »."
                 )?;
             }
             AnswerOutcome::Wrong {

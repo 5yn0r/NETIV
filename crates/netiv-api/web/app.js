@@ -48,6 +48,22 @@
     return s('svg', { class: 'ic', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ICONS[name].map((d) => s('path', { d })));
   }
 
+  /** Texte YAML : les retours à la ligne simples deviennent des espaces, les paragraphes restent. */
+  function unwrap(text) {
+    return String(text).trim().replace(/([^\n])\n(?!\n)/g, '$1 ');
+  }
+
+  /** « 3000.000 ms » → « 3 s », « 1.500 ms » → « 1,5 ms » : la colonne reste étroite. */
+  function shortTime(t) {
+    const m = /^([\d.]+)\s*(µs|ms|s)$/.exec(String(t).trim());
+    if (!m) return t;
+    const ms = +m[1] * ({ 'µs': 0.001, ms: 1, s: 1000 }[m[2]]);
+    const fmt = (v) => String(+v.toFixed(3)).replace('.', ',');
+    if (ms >= 1000) return `${fmt(ms / 1000)} s`;
+    if (ms >= 1 || ms === 0) return ms === 0 ? '0' : `${fmt(ms)} ms`;
+    return `${fmt(ms * 1000)} µs`;
+  }
+
   function clear(el) {
     while (el.firstChild) el.removeChild(el.firstChild);
     return el;
@@ -81,6 +97,7 @@
     traceKinds: new Set(),
     traceText: '',
     libTab: 'networks',
+    libDomain: 'all', // filtre des défis : all, network, system, support
     tab: 'device',
     positions: new Map(),
     view: { x: 0, y: 0, w: 1000, h: 560 }, // viewBox du schéma (zoom, déplacement)
@@ -179,7 +196,7 @@
     'course', 'curl', 'dashboard', 'devices', 'dhcp', 'diagnose', 'dns', 'docs', 'explain', 'forensic', 'forwarding',
     'gateway', 'health', 'help', 'hint', 'iface', 'inspect', 'ip', 'lab', 'latency', 'leaderboard', 'learn', 'load',
     'log', 'loss', 'nslookup', 'ping', 'port', 'range', 'route', 'run', 'security', 'service', 'show', 'step', 'time',
-    'topology', 'trace', 'tutor', 'udp', 'what-if'];
+    'topology', 'trace', 'tutor', 'udp', 'what-if', 'console', 'netiv'];
   const SUBCOMMANDS = {
     show: ['ifaces', 'arp', 'route', 'mac', 'vlan', 'acl', 'services', 'dhcp', 'dns'],
     challenge: ['list', 'start', 'show', 'check', 'finish', 'giveup', 'causes', 'export'],
@@ -189,8 +206,52 @@
     acl: ['add', 'insert', 'del', 'default', 'stateful'],
   };
 
+  // Consoles (Cisco IOS, terminal Windows/Linux) : vocabulaire propre.
+  const PILOT = ['hint', 'answer', 'challenge', 'trace', 'log', 'netiv'];
+  const IOS_WORDS = ['enable', 'disable', 'configure', 'show', 'ping', 'traceroute', 'interface', 'ip', 'no',
+    'shutdown', 'switchport', 'vlan', 'name', 'do', 'end', 'exit', 'copy', 'write'];
+  const IOS_NEXT = {
+    show: ['ip', 'running-config', 'vlan', 'interfaces', 'mac', 'arp', 'access-lists'],
+    configure: ['terminal'],
+    ip: ['address', 'route', 'helper-address', 'interface', 'routing'],
+    no: ['shutdown', 'ip'],
+    switchport: ['mode', 'access', 'trunk'],
+    mode: ['access', 'trunk'],
+    trunk: ['allowed', 'native'],
+    access: ['vlan'],
+  };
+  const HOST_WORDS = ['ipconfig', 'ping', 'tracert', 'traceroute', 'nslookup', 'dig', 'netsh', 'route', 'arp', 'ip',
+    'dhclient', 'resolvectl', 'cat', 'curl', 'hostname', 'exit'];
+  const HOST_NEXT = {
+    ipconfig: ['/all', '/renew', '/release', '/flushdns'],
+    ip: ['a', 'addr', 'route', 'link', 'neigh'],
+    route: ['print', 'add', 'delete'],
+    netsh: ['interface'],
+    arp: ['-a'],
+    cat: ['/etc/resolv.conf'],
+    resolvectl: ['dns', 'revert'],
+  };
+
+  /** Interfaces de l'équipement de la console : noms NETIV et alias Cisco. */
+  function consoleIfaces() {
+    const c = state.snap && state.snap.console;
+    const d = c && state.snap.devices.find((x) => x.name === c.device);
+    if (!d) return [];
+    const base = d.kind === 'switch' ? 1 : 0;
+    return [...d.ifaces.map((i) => i.name), ...d.ifaces.map((_, n) => `Gi0/${n + base}`)];
+  }
+
   /** Candidats pour le mot en cours : commande, sous-commande ou équipement. */
   function candidates(words) {
+    const c = state.snap && state.snap.console;
+    if (c) {
+      const first = c.kind === 'ios' ? IOS_WORDS : HOST_WORDS;
+      if (words.length === 1) return [...first, ...PILOT];
+      const prev = words[words.length - 2].toLowerCase();
+      if (['interface', 'int', 'dev', 'set'].includes(prev)) return consoleIfaces();
+      const next = (c.kind === 'ios' ? IOS_NEXT : HOST_NEXT)[prev];
+      return next || consoleIfaces();
+    }
     if (words.length === 1) return COMMANDS;
     const sub = SUBCOMMANDS[words[0]];
     if (sub && words.length === 2) return [...sub, ...(state.snap ? state.snap.devices.map((d) => d.name) : [])];
@@ -292,11 +353,18 @@
   }
 
   /** Bloc d'une commande : en-tête (invite, commande, heure) puis sortie. */
+  /** Invite actuelle : « netiv » ou celle de la console ouverte (R1(config-if)#). */
+  function currentPrompt() {
+    const c = state.snap && state.snap.console;
+    return c ? c.prompt : null;
+  }
+
   function consoleCommand(line) {
+    const prompt = currentPrompt();
     const now = new Date();
     const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
     const entry = h('div', { class: 'entry' },
-      h('div', { class: 'cmd' }, h('span', { class: 'ps', 'aria-hidden': 'true' }, '›'), h('span', { class: 'line' }, line), h('time', null, time)));
+      h('div', { class: 'cmd' }, h('span', { class: 'ps', 'aria-hidden': 'true' }, prompt ? `${prompt} ` : '›'), h('span', { class: 'line' }, line), h('time', null, time)));
     consoleAppend(entry);
     return entry;
   }
@@ -375,8 +443,29 @@
 
   // ------------------------------------------------------------------ labs
 
+  /** Invite de la ligne de commande : NETIV, ou la console Cisco / terminal ouverte. */
+  function renderPrompt() {
+    const c = state.snap && state.snap.console;
+    const prompt = $('#console-prompt');
+    const form = $('#console-form');
+    const input = $('#console-in');
+    if (!prompt || !form || !input) return;
+    clear(prompt);
+    if (c) {
+      prompt.append(h('span', { class: 'dialect' }, c.kind === 'ios' ? 'Cisco IOS' : 'Terminal'), ` ${c.prompt}`);
+      input.setAttribute('aria-label', `Commande ${c.kind === 'ios' ? 'Cisco IOS' : 'du terminal'} sur ${c.device}`);
+      input.placeholder = c.kind === 'ios' ? 'enable, conf t, sh ip int br…  (« ? » : aide)' : 'ipconfig /all, ip a, ping…  (« help » : aide)';
+    } else {
+      prompt.append('netiv', h('b', null, '›'));
+      input.setAttribute('aria-label', 'Commande NETIV');
+      input.placeholder = 'ping PC1 192.168.2.10   (tape « help »)';
+    }
+    form.classList.toggle('in-console', !!c);
+  }
+
   function applySnapshot(snap) {
     state.snap = snap;
+    renderPrompt();
     const lab = state.labs.find((l) => l.id === snap.id);
     if (lab) lab.name = snap.name || lab.name;
     if (snap.challenge && !snap.challenge.finished) {
@@ -417,7 +506,6 @@
 
   function resetViews() {
     stopPlay();
-    state.helpText = null;
     state.journey = null;
     state.step = -1;
     state.tx = [];
@@ -495,7 +583,7 @@
         h('button', { type: 'button', title: 'Ouvrir un fichier .netiv, .yaml ou .json', onclick: () => $('#file-import').click() }, 'Importer un fichier')));
       for (const name of lib.topologies) {
         root.append(h('div', { class: 'item' },
-          h('div', { class: 'name' }, name),
+          h('div', { class: 'name' }, name, TOPO_DESC[name] ? h('small', null, TOPO_DESC[name]) : null),
           libButton('Ouvrir', () => createLab({ builtin: name }))));
       }
       if (lib.labs.length) {
@@ -512,29 +600,60 @@
         h('div', { class: 'form', style: 'padding:0 10px 10px' }, ta,
           libButton('Ouvrir', () => createLab({ yaml: ta.value })))));
     } else if (state.libTab === 'challenges') {
+      const domain = (c) => c.track || 'network';
+      const counts = { all: lib.challenges.length };
+      for (const c of lib.challenges) counts[domain(c)] = (counts[domain(c)] || 0) + 1;
+      const pick = state.libDomain && counts[state.libDomain] ? state.libDomain : 'all';
+      root.append(h('div', { class: 'filters', role: 'group', 'aria-label': 'Domaine' },
+        [['all', 'Tous'], ['network', 'Réseau'], ['system', 'Système'], ['support', 'Support IT']]
+          .filter(([k]) => counts[k])
+          .map(([k, l]) => h('button', {
+            type: 'button', 'aria-pressed': String(pick === k),
+            onclick: () => { state.libDomain = k; renderLibrary(); },
+          }, l, h('span', { class: 'n' }, counts[k])))));
       for (const diff of ['easy', 'medium', 'hard']) {
-        const list = lib.challenges.filter((c) => c.difficulty === diff);
+        const list = lib.challenges.filter((c) => c.difficulty === diff && (pick === 'all' || domain(c) === pick));
         if (!list.length) continue;
         root.append(h('h3', null, { easy: 'Débutant', medium: 'Intermédiaire', hard: 'Avancé' }[diff]));
-        for (const c of list) {
-          root.append(h('div', { class: 'item' },
-            h('div', { class: 'name' }, c.title,
-              h('small', null, h('span', { class: `pill ${diff}` }, diff), h('span', { class: 'pill' }, c.topic), `${c.minutes} min`)),
-            done.has(c.id) ? h('span', { class: 'done', title: `Réussi : ${done.get(c.id)}/100` }, `✓${done.get(c.id)}`) : null,
-            libButton(done.has(c.id) ? 'Rejouer' : 'Jouer', () => createLab({ challenge: c.id }))));
-        }
+        for (const c of list) libItem(root, c, done, done.has(c.id) ? 'Rejouer' : 'Jouer', () => createLab({ challenge: c.id }));
       }
     } else if (state.libTab === 'ranges') {
-      root.append(h('p', { class: 'muted' }, "Un incident a déjà eu lieu : enquête avec la forensique, puis corrige sans couper le trafic légitime."));
-      for (const r of lib.ranges) {
-        root.append(h('div', { class: 'item' },
-          h('div', { class: 'name' }, r.title, h('small', null, h('span', { class: `pill ${r.difficulty}` }, r.difficulty), `${r.minutes} min`)),
-          done.has(r.id) ? h('span', { class: 'done' }, `✓${done.get(r.id)}`) : null,
-          libButton('Enquêter', () => createLab({ range: r.id }))));
-      }
+      root.append(h('p', { class: 'muted' }, "Enquête sur un incident, puis bloque l’attaquant."));
+      for (const r of lib.ranges) libItem(root, r, done, 'Enquêter', () => createLab({ range: r.id }));
     } else {
       renderGenerate(root, lib);
     }
+  }
+
+  const TOPO_DESC = {
+    office: 'Bureau : switch, deux routeurs, serveur web',
+    dmz: 'Pare-feu, DMZ et VLAN',
+    campus: 'Deux VLAN, trunk, routage inter-VLAN',
+    triangle: 'Trois routeurs, routage statique',
+    cyber: 'Internet, pare-feu, DMZ, LAN, serveurs',
+    dhcp: 'DHCP avec relais, DNS',
+    pme: 'Petite entreprise (tickets de support)',
+    multisite: 'Siège, agence, FAI, VLAN invités',
+  };
+  const DIFF_LABEL = { easy: 'facile', medium: 'moyen', hard: 'difficile' };
+  const TOPIC_LABEL = {
+    physical: 'physique', addressing: 'adressage', switching: 'commutation',
+    routing: 'routage', services: 'services', security: 'sécurité',
+  };
+  const TRACK_LABEL = { support: 'support', system: 'système' };
+
+  /** Une ligne du catalogue : titre, pastilles, score, bouton. */
+  function libItem(root, c, done, action, onclick) {
+    const score = done.get(c.id);
+    root.append(h('div', { class: 'item' },
+      h('div', { class: 'name' }, c.title,
+        h('small', null,
+          h('span', { class: `pill ${c.difficulty}` }, DIFF_LABEL[c.difficulty] || c.difficulty),
+          c.track ? h('span', { class: 'pill track' }, TRACK_LABEL[c.track] || c.track) : null,
+          c.topic ? h('span', { class: 'pill' }, TOPIC_LABEL[c.topic] || c.topic) : null,
+          `${c.minutes} min`)),
+      score !== undefined ? h('span', { class: 'done', title: `Réussi : ${score}/100` }, `✓ ${score}`) : null,
+      libButton(action, onclick)));
   }
 
   function renderGenerate(root, lib) {
@@ -1130,7 +1249,7 @@
   // ---- entrer / sortir
 
   async function enterBuild() {
-    if (!state.current || !state.snap) throw new Error("Ouvre d'abord un lab (ou crée un réseau vide dans le catalogue).");
+    if (!state.current || !state.snap) throw new Error("Aucun lab ouvert : choisis un réseau dans le catalogue.");
     if (state.snap.editable === false) throw new Error(state.snap.edit_lock || 'Ce lab ne peut pas être modifié.');
     const r = await api('GET', `/api/labs/${state.current}/topology`);
     const b = state.build;
@@ -1436,11 +1555,11 @@
     if (b.tool === 'cable') {
       box.append(h('p', { class: 'hint' }, b.cableFrom
         ? `Câble depuis ${b.cableFrom} : clique sur le second équipement (Échap pour annuler).`
-        : 'Outil Câble : clique sur un équipement, puis sur un autre. Une interface libre est choisie de chaque côté.'));
+        : 'Outil Câble : clique sur deux équipements.'));
     }
     if (b.draft) {
       box.append(h('div', { class: 'draft' },
-        h('span', null, 'Brouillon non appliqué : corrige les erreurs ci-dessous (le schéma montre la dernière version valide).'),
+        h('span', null, 'Brouillon non appliqué : corrige les erreurs ci-dessous.'),
         h('button', { type: 'button', onclick: () => guarded(undo) }, 'Abandonner le brouillon')));
     }
     const list = h('ul', { class: 'issue-list' });
@@ -1521,11 +1640,9 @@
       h('p', { class: 'muted' }, `${def.devices.length} équipement(s), ${def.links.length} câble(s).`),
       h('h3', null, 'Pour commencer'),
       h('ol', { class: 'tips' },
-        h('li', null, 'Ajoute des équipements : clic sur la palette, ou glisser-déposer sur le schéma.'),
-        h('li', null, 'Relie-les avec l’outil Câble (touche C) : un clic sur chaque extrémité.'),
-        h('li', null, '« Adresser automatiquement » donne les IP, passerelles et routes manquantes.'),
-        h('li', null, 'Clique un équipement ou un câble pour le configurer ; Suppr le supprime.'),
-        h('li', null, 'Teste avec la barre d’outils (ping) ; Ctrl+Z annule.')),
+        h('li', null, 'Ajoute des équipements depuis la palette.'),
+        h('li', null, 'Relie-les avec l’outil Câble (C).'),
+        h('li', null, '« Adresser automatiquement », puis un ping pour tester.')),
     );
   }
 
@@ -1724,7 +1841,7 @@
           if (v) x.interfaces[k].dhcp_relay = v; else delete x.interfaces[k].dhcp_relay;
         }), { class: 'mono', placeholder: 'aucun (IP du serveur DHCP)' }))));
       root.append(h('h3', null, 'Relais DHCP'),
-        h('p', { class: 'muted' }, 'Une demande DHCP est une diffusion : un routeur ne la transmet que si l’interface du réseau des postes la relaie vers le serveur.'),
+        h('p', { class: 'muted' }, 'Relais : transmet les demandes DHCP de ce réseau au serveur.'),
         h('table', { class: 'grid' }, h('thead', null, h('tr', null, h('th', null, 'Interface'), h('th', null, 'Serveur visé'))), h('tbody', null, rows)));
     }
 
@@ -1934,16 +2051,160 @@
     if (state.build.on) { renderInspector(); return; }
     const root = clear($('#tab-device'));
     if (!d) {
-      root.append(h('p', { class: 'muted' }, 'Clique sur un équipement du schéma pour voir ses interfaces, ses routes, son cache ARP, ses règles…'));
+      root.append(h('p', { class: 'muted' }, 'Clique sur un équipement du schéma.'));
       return;
     }
-    root.append(
-      h('h3', null, d.name),
-      h('dl', { class: 'kv' }, h('dt', null, 'Type'), h('dd', null, d.kind), h('dt', null, 'Rôle'), h('dd', null, d.role)),
-    );
-    d.sections.forEach((sec, i) => {
-      root.append(h('details', { open: i < 2 }, h('summary', null, sec.title), h('pre', null, sec.text)));
-    });
+    const x = d.detail || { interfaces: [] };
+    const ios = ['router', 'switch', 'firewall'].includes(d.kind);
+    const ifs = x.interfaces;
+    const cabled = ifs.filter((i) => i.cable !== null);
+    const broken = ifs.filter((i) => !i.up || i.cable === false);
+    const mainIp = ios ? null : (ifs.find((i) => i.ip) || {}).ip;
+    const zone = { internet: 'Internet', dmz: 'DMZ' }[d.role];
+
+    root.append(h('header', { class: 'dev-head' },
+      s('svg', { viewBox: '-14 -14 28 28', class: `dev-icon kind-${d.kind}`, 'aria-hidden': 'true' }, ...glyph(d.kind)),
+      h('div', { class: 'dev-id' },
+        h('h3', null, d.name),
+        h('div', { class: 'chips' },
+          h('span', { class: 'chip-s' }, KIND_LABEL[d.kind] || d.kind),
+          zone ? h('span', { class: 'chip-s' }, zone) : null,
+          mainIp ? h('span', { class: 'chip-s mono' }, mainIp) : null,
+          broken.length
+            ? h('span', { class: 'chip-s bad' }, `${broken.length} hors service`)
+            : h('span', { class: 'chip-s ok' }, `${cabled.length}/${ifs.length} reliée${ifs.length > 1 ? 's' : ''}`))),
+      h('button', {
+        type: 'button',
+        class: 'console-open',
+        title: ios ? 'Configurer avec les commandes Cisco IOS' : 'Utiliser les commandes Windows et Linux',
+        onclick: async () => { await runCommand(`console ${d.name}`); $('#console-in').focus(); },
+      }, ios ? 'Console IOS' : 'Terminal')));
+
+    // Interfaces ou ports.
+    const alias = (k) => (ios ? `Gi0/${k + (d.kind === 'switch' ? 1 : 0)}` : null);
+    const linkState = (i) => (!i.up ? ['bad', 'éteinte'] : i.cable === false ? ['bad', 'câble coupé'] : i.cable === null ? ['off', 'libre'] : ['ok', 'active']);
+    if (d.kind === 'switch') {
+      devSection(root, 'Ports', ifs.length, table(['Port', 'VLAN', 'Relié à'], ifs.map((i, k) => {
+        const [cls, label] = linkState(i);
+        const vlan = i.port.mode === 'access'
+          ? h('span', { class: 'tag' }, `VLAN ${i.port.vlan}`)
+          : h('span', null, h('span', { class: 'tag trunk' }, 'trunk'), ' ', (i.port.allowed.length ? i.port.allowed.join(', ') : 'tous'), h('small', null, ` · natif ${i.port.native}`));
+        return [nameCell(i.name, alias(k)), vlan, peerCell(i, cls, label)];
+      })));
+      if (x.mac_table) {
+        devSection(root, 'Table MAC', x.mac_table.length,
+          x.mac_table.length ? table(['MAC', 'VLAN', 'Port'], x.mac_table.map((m) => [mono(m.mac), m.vlan, m.port]), { limit: 8 })
+            : h('p', { class: 'muted' }, 'Vide : aucune trame reçue.'));
+      }
+    } else {
+      devSection(root, 'Interfaces', ifs.length, table(['Interface', 'Adresse', 'Relié à'], ifs.map((i, k) => {
+        const [cls, label] = linkState(i);
+        const ip = i.ip ? mono(i.ip) : h('span', { class: 'muted' }, i.dhcp ? 'DHCP (aucune)' : '—');
+        return [nameCell(i.name, alias(k), i.mac), h('span', null, ip, i.dhcp && i.ip ? h('span', { class: 'tag' }, 'DHCP') : null), peerCell(i, cls, label)];
+      })));
+    }
+    if (x.routes) {
+      devSection(root, 'Routes', x.routes.length, table(['Destination', 'Via', 'Sortie'], x.routes.map((r) => {
+        const o = r.origin;
+        return {
+          cls: r.ok ? null : 'row-bad',
+          title: r.ok ? null : 'Inutilisable : prochain saut hors de tout réseau connecté',
+          cells: [h('span', null, mono(r.dest), h('small', null, ` ${o}`)), r.via ? mono(r.via) : h('span', { class: 'muted' }, 'direct'), r.iface || h('span', { class: 'bad-text' }, 'inutilisable')],
+        };
+      })));
+    }
+    if (x.services && x.services.length) {
+      devSection(root, 'Services', x.services.length, h('div', { class: 'chips' },
+        x.services.map((v) => h('span', { class: 'chip-s svc' }, h('b', null, v.name), ` ${v.proto}/${v.port}`))));
+    }
+    if (x.acl && (x.acl.rules.length || x.acl.default !== 'allow')) {
+      devSection(root, 'Filtrage', x.acl.rules.length, h('div', null,
+        h('div', { class: 'chips' },
+          h('span', { class: `chip-s ${x.acl.default === 'deny' ? 'bad' : 'ok'}` }, `par défaut : ${x.acl.default}`),
+          h('span', { class: 'chip-s' }, `suivi de connexion ${x.acl.stateful ? 'actif' : 'inactif'}`)),
+        x.acl.rules.length
+          ? h('ol', { class: 'rules' }, x.acl.rules.map((r) => {
+            const [rule, comment] = r.text.replace(/^(allow|deny)\s+/, '').split(' — ');
+            return h('li', null, h('span', { class: `act ${r.action}` }, r.action),
+              h('span', null, mono(rule), comment ? h('small', null, comment) : null));
+          }))
+          : h('p', { class: 'muted' }, 'Aucune règle.')));
+    }
+    if (x.dhcp) {
+      const box = h('div', { class: 'stack' });
+      const label = { bound: 'adresse obtenue', pending: 'demande en cours', failed: 'aucun serveur', idle: 'pas encore demandée' };
+      for (const c of x.dhcp.clients) {
+        box.append(h('div', { class: 'line' }, h('span', null, `Client ${c.iface}`),
+          h('span', { class: `chip-s ${c.state === 'bound' ? 'ok' : c.state === 'failed' ? 'bad' : ''}` }, c.ip ? `${label[c.state]} : ${c.ip}` : label[c.state])));
+      }
+      for (const r of x.dhcp.relays) box.append(h('div', { class: 'line' }, h('span', null, `Relais ${r.iface}`), mono(`→ ${r.server}`)));
+      const srv = x.dhcp.server;
+      if (srv) {
+        box.append(h('div', { class: 'line' }, h('span', null, 'Serveur'),
+          h('span', { class: `chip-s ${srv.enabled ? 'ok' : 'bad'}` }, srv.enabled ? 'démarré' : 'arrêté')));
+        for (const p of srv.pools) {
+          const pct = p.size ? Math.round((100 * p.used) / p.size) : 0;
+          box.append(h('div', { class: 'pool' }, mono(p.range),
+            h('div', { class: 'track', role: 'img', 'aria-label': `${p.used} sur ${p.size} attribuées` }, h('div', { class: `fill${pct >= 90 ? ' low' : pct >= 70 ? ' mid' : ''}`, style: `width:${pct}%` })),
+            h('small', null, `${p.used}/${p.size}`)));
+        }
+      }
+      devSection(root, 'DHCP', null, box);
+    }
+    if (x.dns) {
+      const box = h('div', { class: 'stack' },
+        h('div', { class: 'line' }, h('span', null, 'Serveur utilisé'),
+          x.dns.server ? h('span', null, mono(x.dns.server), x.dns.learned ? h('span', { class: 'tag' }, 'DHCP') : null) : h('span', { class: 'chip-s bad' }, 'aucun')));
+      const z = x.dns.hosted;
+      if (z) {
+        box.append(h('div', { class: 'line' }, h('span', null, 'Zone hébergée'),
+          h('span', { class: `chip-s ${z.enabled ? 'ok' : 'bad'}` }, z.enabled ? 'démarrée' : 'arrêtée')));
+        if (z.zone.length) box.append(table(['Nom', 'Adresse'], z.zone.map((r) => [mono(r.name), mono(r.ip)]), { limit: 8 }));
+      }
+      devSection(root, 'DNS', null, box);
+    }
+    if (x.arp) {
+      devSection(root, 'Cache ARP', x.arp.length,
+        x.arp.length ? table(['IP', 'MAC'], x.arp.map((a) => [mono(a.ip), mono(a.mac)]), { limit: 8 })
+          : h('p', { class: 'muted' }, 'Vide : aucun échange récent.'));
+    }
+  }
+
+  /** Section de la fiche d'un équipement : titre, compteur, contenu. */
+  function devSection(root, title, count, body) {
+    root.append(h('section', { class: 'dev-sec' },
+      h('h4', null, title, count !== null && count !== undefined ? h('span', { class: 'count' }, count) : null),
+      body));
+  }
+
+  const mono = (t) => h('span', { class: 'mono' }, t);
+
+  function nameCell(name, alias, mac) {
+    return h('span', { class: 'iface', title: mac ? `MAC ${mac}` : null }, h('b', null, name), alias ? h('small', null, alias) : null);
+  }
+
+  function peerCell(i, cls, label) {
+    return h('span', { class: 'peer' }, h('i', { class: `dot ${cls}`, title: label, 'aria-label': label }),
+      i.peer ? mono(i.peer) : h('span', { class: 'muted' }, label));
+  }
+
+  /**
+   * Tableau compact qui passe à la ligne (jamais de défilement horizontal).
+   * Une ligne : tableau de cellules, ou { cells, cls, title }. Au-delà de
+   * `limit` lignes, un bouton « Tout afficher ».
+   */
+  function table(head, rows, { limit } = {}) {
+    const tb = h('tbody');
+    const all = rows.map((r) => (Array.isArray(r) ? { cells: r } : r));
+    const draw = (n) => {
+      clear(tb);
+      for (const r of all.slice(0, n)) tb.append(h('tr', { class: r.cls, title: r.title }, r.cells.map((c) => h('td', null, c))));
+    };
+    draw(limit || all.length);
+    const t = h('table', { class: 'tbl' }, h('thead', null, h('tr', null, head.map((x) => h('th', { scope: 'col' }, x)))), tb);
+    if (!limit || all.length <= limit) return t;
+    const more = h('button', { type: 'button', class: 'more', onclick: () => { draw(all.length); more.remove(); } }, `Tout afficher (${all.length})`);
+    return h('div', null, t, more);
   }
 
   // ---- parcours (Packet Journey)
@@ -1974,7 +2235,7 @@
   function renderJourney() {
     const root = clear($('#tab-journey'));
     if (!state.tx.length) {
-      root.append(h('p', { class: 'muted' }, "Aucun échange pour l'instant. Envoie un ping ou une requête (barre d'outils) : son parcours complet s'affiche ici, étape par étape."));
+      root.append(h('p', { class: 'muted' }, "Envoie un ping pour voir son parcours."));
       return;
     }
     const sel = h('select', { 'aria-label': 'Échange à rejouer', onchange: (e) => guarded(() => openJourney(+e.target.value, { switchTab: false })) },
@@ -1996,7 +2257,7 @@
     const ol = h('ol', { class: 'steps', id: 'steps' });
     j.steps.forEach((st, i) => {
       ol.append(h('li', { 'data-i': i, class: `k-${st.kind}`, onclick: () => gotoStep(i) },
-        h('span', { class: 't' }, st.time), h('span', { class: 'd' }, st.device), h('span', { class: `k-${st.kind}` }, st.text)));
+        h('span', { class: 't' }, shortTime(st.time)), h('span', { class: 'd' }, st.device), h('span', { class: `x k-${st.kind}` }, st.text)));
     });
     root.append(ol);
     root.onkeydown = (e) => {
@@ -2101,7 +2362,7 @@
   function renderTrace() {
     const root = clear($('#tab-trace'));
     if (!state.traceEvents.length) {
-      root.append(h('p', { class: 'muted' }, 'La trace est vide : rien ne s’est encore passé dans ce lab.'));
+      root.append(h('p', { class: 'muted' }, 'Trace vide.'));
       return;
     }
     const filters = h('div', { class: 'filters', role: 'group', 'aria-label': 'Filtres' },
@@ -2128,9 +2389,9 @@
       ol.append(h('li', {
         class: `k-${e.kind}`, title: e.trace_id ? `Transaction #${e.trace_id}` : '',
         onclick: () => { if (e.trace_id) guarded(() => openJourney(e.trace_id)); },
-      }, h('span', { class: 't' }, e.time), h('span', { class: 'd' }, e.device), h('span', { class: `k-${e.kind}` }, e.text)));
+      }, h('span', { class: 't' }, shortTime(e.time)), h('span', { class: 'd' }, e.device), h('span', { class: `x k-${e.kind}` }, e.text)));
     }
-    if (!events.length) ol.append(h('li', null, h('span'), h('span'), h('span', { class: 'muted' }, 'Aucun événement ne correspond.')));
+    if (!events.length) ol.append(h('li', null, h('span', { class: 'x muted' }, 'Aucun événement ne correspond.')));
   }
 
   // ---- analyse
@@ -2224,7 +2485,7 @@
     const root = clear($('#tab-challenge'));
     const c = state.snap && state.snap.challenge;
     if (!c) {
-      root.append(h('p', { class: 'muted' }, 'Aucun défi en cours. Lance-en un depuis l’onglet « Défis » ou « Cyber range » du catalogue.'));
+      root.append(h('p', { class: 'muted' }, 'Aucun défi en cours.'));
       return;
     }
     if (c.ticket) {
@@ -2234,14 +2495,17 @@
     }
     root.append(
       h('div', { class: 'chal-title' }, c.title),
-      h('div', null, h('span', { class: 'pill' }, c.kind === 'range' ? 'cyber range' : 'défi'),
+      h('div', { class: 'chips' }, h('span', { class: 'pill' }, c.kind === 'range' ? 'cyber range' : 'défi'),
         c.finished ? h('span', { class: 'pill' }, c.score !== null && c.score !== undefined ? `terminé · ${c.score}/100` : 'terminé')
           : h('span', null, 'Temps restant : ', h('span', { class: 'timer', id: 'chal-timer' }, formatTime(Math.round((state.deadline - Date.now()) / 1000))))),
-      h('div', { class: 'statement' }, c.description),
-      h('p', { class: 'muted' }, `Indices utilisés : ${c.hints_used}${c.kind === 'challenge' ? ` · objectif atteint : ${c.fixed ? 'oui' : 'non'} · diagnostic : ${c.answered ? 'donné' : 'à donner'}` : ''}`),
+      h('div', { class: 'statement' }, unwrap(c.description)),
+      h('div', { class: 'chips chal-state' },
+        c.kind === 'challenge' ? h('span', { class: `chip-s ${c.fixed ? 'ok' : ''}` }, c.fixed ? 'objectif atteint' : 'objectif pas encore atteint') : null,
+        c.kind === 'challenge' ? h('span', { class: `chip-s ${c.answered ? 'ok' : ''}` }, c.answered ? 'diagnostic donné' : 'diagnostic à donner') : null,
+        h('span', { class: 'chip-s' }, `indices : ${c.hints_used}`)),
     );
     if (c.finished) {
-      root.append(h('p', null, 'Épreuve terminée. Les analyses (santé, diagnostic…) sont de nouveau disponibles.'));
+      root.append(h('p', null, 'Épreuve terminée.'));
       return;
     }
     const cmd = c.kind === 'range' ? 'range' : 'challenge';
@@ -2411,16 +2675,250 @@
     });
   }
 
+  // ---- documentation (bouton « ? ») ; contenu dans help.js
+
+  let DOC = null;
+  let docLoading = null;
+
+  /** Le contenu (help.js, ≈ 32 Ko) n'est téléchargé qu'à la première ouverture. */
+  function loadDoc() {
+    if (DOC) return Promise.resolve(DOC);
+    docLoading ??= new Promise((resolve, reject) => {
+      const tag = document.createElement('script');
+      tag.src = new URL('help.js', document.baseURI).href;
+      tag.onload = () => { DOC = window.NETIV_HELP || null; resolve(DOC); };
+      tag.onerror = () => { docLoading = null; reject(new Error('documentation indisponible')); };
+      document.head.append(tag);
+    });
+    return docLoading;
+  }
+
   async function openHelp() {
     const dlg = $('#help-dialog');
-    if (state.current && !state.helpText) {
-      try {
-        const r = await api('POST', `/api/labs/${state.current}/exec`, { line: 'help' });
-        state.helpText = (r.output || '').replace(/\n+$/, '');
-      } catch (_) { /* l'aide des raccourcis suffit */ }
-    }
-    if (state.helpText) $('#help-commands').textContent = state.helpText;
+    const search = $('#doc-search');
+    search.value = '';
     if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+    if (!DOC) {
+      clear($('#doc-nav'));
+      clear($('#doc-body')).append(h('p', { class: 'muted' }, 'Chargement de la documentation…'));
+      try { await loadDoc(); } catch (_) { /* message ci-dessous */ }
+    }
+    renderDoc('');
+    search.focus();
+  }
+
+  /** Équipements du lab ouvert pour les exemples (sinon des noms types). */
+  function docSamples() {
+    const devs = state.snap ? state.snap.devices : [];
+    const first = (...kinds) => kinds.map((k) => devs.find((d) => d.kind === k)).find(Boolean);
+    const host = first('host');
+    const server = devs.find((d) => d.kind === 'server' && d.ifaces.some((i) => i.ip)) || first('server');
+    const router = first('router', 'firewall');
+    const fw = first('firewall', 'router');
+    const sw = first('switch');
+    const ipOf = (d) => { const i = d && d.ifaces.find((x) => x.ip); return i ? i.ip.replace(/\/\d+$/, '') : null; };
+    const cidrOf = (d) => { const i = d && d.ifaces.find((x) => x.ip); return i ? i.ip : null; };
+    // Passerelle du poste : l'interface de routeur dans le même réseau.
+    const num = (ip) => ip.split('.').reduce((a, b) => a * 256 + +b, 0);
+    const sameNet = (a, b) => {
+      const [ip, len] = a.split('/');
+      const shift = 2 ** (32 - +len);
+      return Math.floor(num(ip) / shift) === Math.floor(num(b.split('/')[0]) / shift);
+    };
+    const hostCidr = cidrOf(host);
+    const gw = hostCidr && devs.filter((d) => d.kind === 'router' || d.kind === 'firewall')
+      .flatMap((d) => d.ifaces).find((i) => i.ip && sameNet(hostCidr, i.ip));
+    const ifaceOf = (d) => { const i = d && (d.ifaces.find((x) => x.ip) || d.ifaces[0]); return i ? i.name : null; };
+    return {
+      host: host ? host.name : 'PC1',
+      server: server ? server.name : 'SRV',
+      router: router ? router.name : 'R1',
+      fw: fw ? fw.name : 'FW1',
+      switch: sw ? sw.name : 'SW1',
+      serverIp: ipOf(server) || '192.168.2.10',
+      hostIp: hostCidr || '192.168.1.10/24',
+      hostGw: gw ? gw.ip.replace(/\/\d+$/, '') : '192.168.1.1',
+      hostIface: ifaceOf(host) || 'eth0',
+      routerIface: ifaceOf(router) || 'eth1',
+      switchPort: (sw && sw.ifaces[0] && sw.ifaces[0].name) || 'p1',
+    };
+  }
+
+  /** Syntaxe colorée : mots-clés, <paramètres>, [facultatif], a|b. */
+  function syntaxNodes(text) {
+    const out = [];
+    for (const tok of text.match(/\[[^\]]*\]|<[^>]*>|\s+|[^\s[<]+/g) || []) {
+      if (/^\s+$/.test(tok)) out.push(' ');
+      else if (tok.startsWith('[')) out.push(h('span', { class: 'syn-opt' }, '[', syntaxNodes(tok.slice(1, -1)), ']'));
+      else if (tok.startsWith('<')) out.push(h('span', { class: 'syn-par' }, tok));
+      else if (tok.includes('|')) out.push(h('span', { class: 'syn-alt' }, tok));
+      else out.push(h('b', { class: 'syn-kw' }, tok));
+    }
+    return out;
+  }
+
+  function kindChip(kind) {
+    const dev = DOC.devices.find((d) => d.kind === kind);
+    return h('span', { class: 'kind-chip' },
+      s('svg', { viewBox: '-14 -14 28 28', class: `pal-icon kind-${kind}`, 'aria-hidden': 'true' }, ...glyph(kind)),
+      dev ? dev.name : kind);
+  }
+
+  /** Met l'exemple dans la console, prêt à être modifié puis exécuté. */
+  function insertExample(line) {
+    $('#help-dialog').close();
+    if (state.ui.hideConsole) setUi({ hideConsole: false });
+    const input = $('#console-in');
+    input.value = line;
+    input.focus();
+    input.setSelectionRange(line.length, line.length);
+  }
+
+  /** Nom court d'une commande : « port access », « acl insert », « show vlan|mac ». */
+  function cmdLabel(c) {
+    const words = [];
+    const clean = c.syntax.split(' | ')[0].replace(/<[^>]*>|\[[^\]]*\]/g, ' ').split(/\s+/).filter((w) => w && !w.startsWith('|'));
+    for (const w of clean) {
+      if (words.length >= 3 || w === 'via' || (words.length >= 2 && w.includes('|'))) break;
+      words.push(w);
+    }
+    return words.join(' ');
+  }
+
+  const cmdId = (c) => `doc-${c.syntax.split(/\s+/).filter((w) => /^[a-z-]+$/.test(w)).slice(0, 3).join('-')}`;
+
+  function commandCard(c, sample) {
+    const fill = (t) => t.replace(/\{(\w+)\}/g, (m, k) => (k in sample ? sample[k] : m));
+    return h('article', { class: 'cmd-card', id: cmdId(c) },
+      h('code', { class: 'syn' }, syntaxNodes(c.syntax)),
+      h('p', null, c.summary),
+      c.params.length
+        ? h('dl', { class: 'cmd-params' }, c.params.flatMap(([n, d]) => [h('dt', null, syntaxNodes(n.includes('<') || n.includes('|') ? n : `<${n}>`)), h('dd', null, d)]))
+        : null,
+      h('div', { class: 'cmd-foot' },
+        h('div', { class: 'cmd-for' }, h('span', { class: 'muted' }, 'Pour :'),
+          c.devices.length === 5 ? h('span', { class: 'kind-chip all' }, 'tous les équipements') : c.devices.map(kindChip)),
+        h('div', { class: 'cmd-ex' }, c.examples.map((ex) => {
+          const line = fill(ex);
+          return h('button', { type: 'button', class: 'ex', title: 'Mettre dans la console', onclick: () => insertExample(line) },
+            h('code', null, line), h('span', { class: 'ins' }, 'Insérer'));
+        }))));
+  }
+
+  function renderDoc(query) {
+    const nav = clear($('#doc-nav'));
+    const body = clear($('#doc-body'));
+    if (!DOC) { body.append(h('p', { class: 'muted' }, 'Documentation indisponible.')); return; }
+    const sample = docSamples();
+    const q = query.trim().toLowerCase();
+    const sections = [];
+    const section = (id, title, ...kids) => {
+      sections.push([id, title]);
+      body.append(h('section', { class: 'doc-sec', id: `sec-${id}`, 'aria-labelledby': `sec-${id}-t` },
+        h('h3', { id: `sec-${id}-t` }, title), ...kids));
+    };
+
+    if (q) {
+      // Recherche : uniquement les commandes qui correspondent.
+      const hits = [];
+      for (const g of DOC.groups) {
+        for (const c of g.commands) {
+          const text = [c.syntax, c.summary, ...c.params.flat(), g.title].join(' ').toLowerCase();
+          if (q.split(/\s+/).every((w) => text.includes(w))) hits.push(c);
+        }
+      }
+      for (const [syn, where, what] of DOC.ios.commands) {
+        if (`${syn} ${what} cisco ios`.toLowerCase().includes(q)) hits.push({ ios: [syn, where, what] });
+      }
+      body.append(h('p', { class: 'muted doc-count' }, hits.length ? `${hits.length} résultat${hits.length > 1 ? 's' : ''} pour « ${query.trim()} »` : `Aucune commande pour « ${query.trim()} ».`));
+      for (const c of hits) {
+        body.append(c.ios
+          ? h('article', { class: 'cmd-card' }, h('code', { class: 'syn' }, syntaxNodes(c.ios[0])), h('p', null, c.ios[2]), h('p', { class: 'muted' }, `Console Cisco IOS, mode ${c.ios[1]}`))
+          : commandCard(c, sample));
+      }
+      nav.append(h('p', { class: 'muted' }, 'Effacez la recherche pour revenir au sommaire.'));
+      return;
+    }
+
+    // 1. Méthode.
+    section('methode', 'Résoudre un lab',
+      h('ol', { class: 'doc-steps' }, DOC.method.map(([t, d]) => h('li', null, h('b', null, t), h('span', null, d)))),
+      h('p', { class: 'muted' }, 'Barème : diagnostic juste +40, correction +40, rapidité jusqu’à +20, chaque indice −10.'));
+
+    // 2. Équipements, et les commandes propres à chacun.
+    const inLab = (kind) => (state.snap ? state.snap.devices.filter((d) => d.kind === kind).map((d) => d.name) : []);
+    section('equipements', 'Les équipements',
+      h('div', { class: 'dev-cards' }, DOC.devices.map((d) => {
+        const all = DOC.groups.flatMap((g) => g.commands);
+        const own = (d.keys || []).map((k) => all.find((c) => c.syntax.startsWith(k))).filter(Boolean);
+        const names = inLab(d.kind);
+        return h('article', { class: 'dev-card' },
+          h('header', null, s('svg', { viewBox: '-14 -14 28 28', class: `dev-icon kind-${d.kind}`, 'aria-hidden': 'true' }, ...glyph(d.kind)), h('h4', null, d.name)),
+          h('p', null, d.role),
+          h('p', { class: 'small' }, h('b', null, 'Se configure : '), d.config),
+          h('p', { class: 'small' }, h('b', null, 'Console : '), d.console),
+          names.length ? h('p', { class: 'small' }, h('b', null, 'Dans ce lab : '), names.join(', ')) : null,
+          own.length ? h('p', { class: 'small' }, h('b', null, 'Commandes clés :')) : null,
+          own.length ? h('div', { class: 'links' }, own.map((c) => h('a', { href: `#${cmdId(c)}`, onclick: (e) => { e.preventDefault(); jumpTo(cmdId(c)); } }, cmdLabel(c)))) : null);
+      })));
+
+    // 3. Commandes NETIV, par tâche.
+    for (const g of DOC.groups) {
+      section(g.id, g.title, g.intro ? h('p', { class: 'muted' }, g.intro) : null, g.commands.map((c) => commandCard(c, sample)));
+    }
+
+    // 4. Consoles.
+    section('ios', 'Console Cisco IOS',
+      h('p', { class: 'muted' }, DOC.ios.intro),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Invite', 'Mode', 'Pour', 'En sortir / avancer'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, DOC.ios.modes.map((r) => h('tr', null, r.map((x, i) => h('td', null, i === 0 || i === 3 ? h('code', null, x) : x)))))),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Commande', 'Mode', 'Rôle'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, DOC.ios.commands.map(([c, m, w]) => h('tr', null, h('td', null, h('code', { class: 'syn' }, syntaxNodes(c))), h('td', null, h('code', null, m)), h('td', null, w))))));
+    section('terminal', 'Terminal Windows / Linux',
+      h('p', { class: 'muted' }, DOC.host.intro),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Pour', 'Windows', 'Linux'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, DOC.host.rows.map(([t, w, l]) => h('tr', null, h('td', null, t), h('td', null, h('code', { class: 'syn' }, syntaxNodes(w))), h('td', null, h('code', { class: 'syn' }, syntaxNodes(l))))))));
+
+    // 5. Ce qu'on donne à « answer ».
+    const causes = state.library && state.library.causes ? state.library.causes : Object.keys(DOC.causeHints).map((slug) => ({ slug, label: '' }));
+    section('causes', 'Causes de panne (answer)',
+      h('p', { class: 'muted' }, 'À donner après l’équipement : « answer R1 missing-route ».'),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Cause', 'Signification', 'Comment la reconnaître'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, causes.map((c) => h('tr', null, h('td', null, h('code', null, c.slug)), h('td', null, c.label), h('td', { class: 'muted' }, DOC.causeHints[c.slug] || ''))))));
+    const behaviors = state.library && state.library.behaviors ? state.library.behaviors : Object.keys(DOC.behaviors);
+    section('comportements', 'Comportements (cyber range)',
+      h('p', { class: 'muted' }, 'À donner après la machine coupable : « answer WEB01 port-scan ».'),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Comportement', 'Nom', 'Ce qu’on voit'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, behaviors.map((b) => { const [n, d] = DOC.behaviors[b] || [b, '']; return h('tr', null, h('td', null, h('code', null, b)), h('td', null, n), h('td', { class: 'muted' }, d)); }))));
+
+    // 6. Lexique et raccourcis.
+    section('lexique', 'Lexique',
+      h('dl', { class: 'doc-gloss' }, DOC.glossary.flatMap(([t, d]) => [h('dt', null, t), h('dd', null, d)])));
+    section('raccourcis', 'Raccourcis clavier',
+      h('dl', { class: 'doc-gloss' }, DOC.shortcuts.flatMap(([k, d]) => [h('dt', null, k.split(/\s{2,}/).map((x) => h('kbd', null, x))), h('dd', null, d)])),
+      h('p', { class: 'muted' }, 'Schéma : molette = zoom, glisser = déplacer. Bord d’une zone : glisser pour redimensionner, double-clic = taille par défaut.'));
+
+    nav.append(
+      h('ul', null, sections.map(([id, title]) =>
+        h('li', null, h('a', { href: `#sec-${id}`, onclick: (e) => { e.preventDefault(); jumpTo(`sec-${id}`); } }, title)))),
+      // Sur téléphone : une liste déroulante à la place du sommaire.
+      h('select', { 'aria-label': 'Aller à la section', onchange: (e) => jumpTo(`sec-${e.target.value}`) },
+        sections.map(([id, title]) => h('option', { value: id }, title))));
+  }
+
+  /** Fait défiler la documentation jusqu'à un élément (sans toucher à l'URL). */
+  function jumpTo(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start', behavior: reducedMotion ? 'auto' : 'smooth' });
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
   }
 
   function initLayout() {
@@ -2448,6 +2946,7 @@
     $('#console-size').addEventListener('input', (e) => setUi({ consoleH: +e.target.value, hideConsole: false }));
     $('#layout-reset').addEventListener('click', () => { setUi({ ...UI_DEFAULTS }); fitView(); });
     $('#help-btn').addEventListener('click', openHelp);
+    $('#doc-search').addEventListener('input', (e) => renderDoc(e.target.value));
 
     // Le menu Affichage se ferme en cliquant ailleurs ou avec Échap.
     const menu = $('#view-menu');

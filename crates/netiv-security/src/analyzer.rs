@@ -167,14 +167,14 @@ fn probe_ping(sim: &Simulation, src: DeviceId, dst: Ipv4Addr) -> Option<PingInfo
     let r = run_probe(sim, &Probe { src, dst, kind }).ok()?;
     let mut routers = Vec::new();
     for e in &r.events {
-        if let TraceKind::FrameReceived { frame, .. } = &e.kind {
-            if let EtherPayload::Ipv4(p) = &frame.payload {
-                let router = sim
-                    .device(e.device)
-                    .is_some_and(|d| matches!(d.kind, DeviceKind::Router | DeviceKind::Firewall));
-                if p.dst == dst && router && !routers.contains(&e.device) {
-                    routers.push(e.device);
-                }
+        if let TraceKind::FrameReceived { frame, .. } = &e.kind
+            && let EtherPayload::Ipv4(p) = &frame.payload
+        {
+            let router = sim
+                .device(e.device)
+                .is_some_and(|d| matches!(d.kind, DeviceKind::Router | DeviceKind::Firewall));
+            if p.dst == dst && router && !routers.contains(&e.device) {
+                routers.push(e.device);
             }
         }
     }
@@ -731,10 +731,10 @@ impl Analyzer<'_> {
                 continue;
             };
             for i in &d.ifaces {
-                if let PortMode::Trunk { allowed, .. } = sw.port_mode(i.id) {
-                    if allowed.is_empty() {
-                        wide.push(format!("{}/{}", d.name, i.name));
-                    }
+                if let PortMode::Trunk { allowed, .. } = sw.port_mode(i.id)
+                    && allowed.is_empty()
+                {
+                    wide.push(format!("{}/{}", d.name, i.name));
                 }
             }
         }

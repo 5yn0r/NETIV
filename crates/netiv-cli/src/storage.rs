@@ -48,10 +48,10 @@ pub trait Storage: Send {
     /// dans un fichier temporaire, puis renommé. Un lecteur voit l'ancien
     /// contenu ou le nouveau, jamais un fichier à moitié écrit.
     fn write_atomic(&self, path: &Path, text: &str) -> io::Result<()> {
-        if let Some(dir) = path.parent() {
-            if !dir.as_os_str().is_empty() {
-                self.create_dir_all(dir)?;
-            }
+        if let Some(dir) = path.parent()
+            && !dir.as_os_str().is_empty()
+        {
+            self.create_dir_all(dir)?;
         }
         let mut tmp = path.as_os_str().to_owned();
         tmp.push(".tmp");

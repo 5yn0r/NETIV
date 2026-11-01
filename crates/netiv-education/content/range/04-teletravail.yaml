@@ -1,0 +1,33 @@
+id: range-04
+title: L'accès télétravail grand ouvert
+difficulty: medium
+description: |
+  ALERTE — Le pare-feu voit des connexions venues d'Internet vers le serveur de
+  fichiers FILE01. Une règle a été ajoutée la semaine dernière pour le télétravail.
+
+  Identifie la source et son comportement, puis ferme l'accès sans couper le site
+  web ni le partage de fichiers du LAN.
+time_limit_minutes: 25
+topology_ref: cyber
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: allow, dst: 192.168.20.20/32, in: eth0, comment: "télétravail (accès FILE01)" }
+traffic:
+  - { at_s: 4, from: INET, to: 192.168.20.20, proto: tcp, ports: [21, 22, 23, 80, 139, 445, 3389, 5985], every_ms: 400 }
+culprit:
+  device: INET
+  behavior: port-scan
+must_block:
+  - { from: INET, to: 192.168.20.20, service: { proto: tcp, port: 22 } }
+  - { from: INET, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+must_work:
+  - { from: INET, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
+  - { from: PC01, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+  - { from: PC02, to: 203.0.113.10, service: { proto: tcp, port: 80 } }
+solution:
+  explanation: |
+    203.0.113.10 essaie un à un les ports de FILE01 : un balayage depuis Internet.
+    La règle « télétravail » publie tout le serveur. Le télétravail passe par un VPN,
+    jamais par une ouverture directe : il faut retirer la règle.
+  commands: ["acl del FW1 1"]

@@ -268,10 +268,8 @@ impl Diagnosis {
                     let _ = writeln!(s, "  Attendu  : {e}");
                 }
             }
-            if reveal_fix {
-                if let Some(f) = &c.fix {
-                    let _ = writeln!(s, "Pour réparer : {f}");
-                }
+            if reveal_fix && let Some(f) = &c.fix {
+                let _ = writeln!(s, "Pour réparer : {f}");
             }
         }
         s
@@ -359,29 +357,29 @@ impl Env<'_> {
                     .and_then(|d| d.iface(*iface))
                     .and_then(|i| i.link)
                     .and_then(|l| self.sim.link(l));
-                if let Some(l) = link {
-                    if l.latency > HIGH_LATENCY {
-                        let mut c = RootCause::new(
-                            CauseKind::HighLatency,
-                            &self.name(l.a.0),
-                            format!(
-                                "câble {} ↔ {} : latence de {}",
-                                self.label(l.a.0, l.a.1),
-                                self.label(l.b.0, l.b.1),
-                                l.latency
-                            ),
-                        );
-                        c.actual = Some(l.latency.to_string());
-                        let base = self.base_link_latency(l.id);
-                        c.expected = base.map(|t| t.to_string());
-                        let ms = base.map_or(1, |t| (t.as_micros() / 1_000).max(1));
-                        c.fix = Some(format!(
-                            "latency {} {} {ms}",
-                            self.name(l.a.0),
-                            self.iface_name(l.a.0, l.a.1)
-                        ));
-                        return Some(c);
-                    }
+                if let Some(l) = link
+                    && l.latency > HIGH_LATENCY
+                {
+                    let mut c = RootCause::new(
+                        CauseKind::HighLatency,
+                        &self.name(l.a.0),
+                        format!(
+                            "câble {} ↔ {} : latence de {}",
+                            self.label(l.a.0, l.a.1),
+                            self.label(l.b.0, l.b.1),
+                            l.latency
+                        ),
+                    );
+                    c.actual = Some(l.latency.to_string());
+                    let base = self.base_link_latency(l.id);
+                    c.expected = base.map(|t| t.to_string());
+                    let ms = base.map_or(1, |t| (t.as_micros() / 1_000).max(1));
+                    c.fix = Some(format!(
+                        "latency {} {} {ms}",
+                        self.name(l.a.0),
+                        self.iface_name(l.a.0, l.a.1)
+                    ));
+                    return Some(c);
                 }
             }
         }
@@ -842,10 +840,10 @@ impl Env<'_> {
                 self.label(b.0, b.1)
             ),
         );
-        if let (Some(x), Some(y)) = (pa, pb) {
-            if let Some(detail) = self.vlan_pair_detail(x, y) {
-                c.detail = detail;
-            }
+        if let (Some(x), Some(y)) = (pa, pb)
+            && let Some(detail) = self.vlan_pair_detail(x, y)
+        {
+            c.detail = detail;
         }
         c
     }
@@ -971,14 +969,14 @@ impl Env<'_> {
         // Équipements qui reçoivent plusieurs fois le paquet aller.
         let mut seen: Vec<(DeviceId, usize)> = Vec::new();
         for e in self.events {
-            if let TraceKind::FrameReceived { frame, .. } = &e.kind {
-                if let EtherPayload::Ipv4(p) = &frame.payload {
-                    if p.dst == self.req.dst && !crate::l2::is_switch(self.sim, e.device) {
-                        match seen.iter_mut().find(|(d, _)| *d == e.device) {
-                            Some((_, n)) => *n += 1,
-                            None => seen.push((e.device, 1)),
-                        }
-                    }
+            if let TraceKind::FrameReceived { frame, .. } = &e.kind
+                && let EtherPayload::Ipv4(p) = &frame.payload
+                && p.dst == self.req.dst
+                && !crate::l2::is_switch(self.sim, e.device)
+            {
+                match seen.iter_mut().find(|(d, _)| *d == e.device) {
+                    Some((_, n)) => *n += 1,
+                    None => seen.push((e.device, 1)),
                 }
             }
         }
@@ -1132,12 +1130,12 @@ impl Env<'_> {
             }
             None => {
                 let base_default = self.base_node(d).map(|n| n.acl.default);
-                if let Some(bd) = base_default {
-                    if self.node(d).is_some_and(|n| n.acl.default != bd) {
-                        c.expected = Some(format!("politique par défaut : {bd}"));
-                        c.fix = Some(format!("acl default {dname} {bd}"));
-                        return Some(c);
-                    }
+                if let Some(bd) = base_default
+                    && self.node(d).is_some_and(|n| n.acl.default != bd)
+                {
+                    c.expected = Some(format!("politique par défaut : {bd}"));
+                    c.fix = Some(format!("acl default {dname} {bd}"));
+                    return Some(c);
                 }
                 let proto = match self.req.service {
                     None => "icmp".to_string(),
@@ -1196,18 +1194,16 @@ impl Env<'_> {
             if matches!(
                 dev.kind,
                 netiv_core::DeviceKind::Router | netiv_core::DeviceKind::Firewall
-            ) {
-                if let Behavior::Ip(n) = &dev.behavior {
-                    if !n.forwarding {
-                        let mut c = RootCause::new(
-                            CauseKind::ForwardingDisabled,
-                            &dev.name,
-                            format!("{} ne transfère pas les paquets", dev.name),
-                        );
-                        c.fix = Some(format!("forwarding {} on", dev.name));
-                        return Some(c);
-                    }
-                }
+            ) && let Behavior::Ip(n) = &dev.behavior
+                && !n.forwarding
+            {
+                let mut c = RootCause::new(
+                    CauseKind::ForwardingDisabled,
+                    &dev.name,
+                    format!("{} ne transfère pas les paquets", dev.name),
+                );
+                c.fix = Some(format!("forwarding {} on", dev.name));
+                return Some(c);
             }
         }
         None

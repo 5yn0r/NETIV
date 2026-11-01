@@ -90,11 +90,15 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
             "ticket": c.ticket,
         })
     });
+    // Console ouverte (CLI Cisco ou terminal de poste) : l'interface adapte l'invite.
+    let console = session
+        .console_info()
+        .map(|c| json!({ "device": c.device, "kind": c.kind, "prompt": c.prompt }));
     let edit_lock = session.edit_lock();
     let Some(sim) = session.simulation() else {
         return json!({
             "id": id, "name": null, "devices": [], "links": [], "time_us": 0,
-            "pending": 0, "trace_len": 0, "challenge": challenge,
+            "pending": 0, "trace_len": 0, "challenge": challenge, "console": console,
             "editable": edit_lock.is_none(), "edit_lock": edit_lock,
         });
     };
@@ -173,6 +177,7 @@ pub fn snapshot(id: &str, session: &Session) -> Value {
         "devices": devices,
         "links": links,
         "challenge": challenge,
+        "console": console,
         "editable": edit_lock.is_none(),
         "edit_lock": edit_lock,
     })
@@ -310,5 +315,153 @@ pub fn device_json(sim: &Simulation, name: &str) -> Option<Value> {
         "kind": dev.kind.to_string(),
         "role": dev.effective_role(),
         "sections": sections,
+        "detail": device_detail(sim, id),
     }))
+}
+
+/// Fiche structurée d'un équipement, pour l'interface web (les `sections`
+/// texte restent pour la CLI et la compatibilité).
+fn device_detail(sim: &Simulation, id: DeviceId) -> Value {
+    use netiv_core::dhcp::ClientState;
+    use netiv_core::switch::PortMode;
+    let Some(dev) = sim.device(id) else {
+        return Value::Null;
+    };
+    let dhcp = |i: netiv_core::IfaceId| matches!(&dev.behavior, Behavior::Ip(n) if n.dhcp_ifaces.contains(&i));
+    let ifaces: Vec<Value> = dev
+        .ifaces
+        .iter()
+        .map(|i| {
+            let link = i.link.and_then(|l| sim.link(l));
+            let peer = link.and_then(|l| l.peer_of(id, i.id)).map(|(pd, pi)| {
+                format!(
+                    "{}:{}",
+                    render::device_name(sim, pd),
+                    render::iface_name(sim, pd, pi)
+                )
+            });
+            let mut v = json!({
+                "name": i.name,
+                "mac": i.mac.to_string(),
+                "ip": i.ip.map(|n| n.to_string()),
+                "dhcp": dhcp(i.id),
+                "up": i.admin_up,
+                "cable": link.map(|l| l.up),
+                "peer": peer,
+            });
+            if let Behavior::Switch(sw) = &dev.behavior {
+                v["port"] = match sw.port_mode(i.id) {
+                    PortMode::Access { vlan } => json!({ "mode": "access", "vlan": vlan }),
+                    PortMode::Trunk { allowed, native } => {
+                        json!({ "mode": "trunk", "allowed": allowed, "native": native })
+                    }
+                };
+            }
+            v
+        })
+        .collect();
+    let mut out = json!({ "interfaces": ifaces });
+    match &dev.behavior {
+        Behavior::Switch(sw) => {
+            out["mac_table"] = sw
+                .mac_table
+                .iter()
+                .map(|((vlan, mac), port)| {
+                    json!({ "vlan": vlan, "mac": mac.to_string(), "port": render::iface_name(sim, id, *port) })
+                })
+                .collect();
+        }
+        Behavior::Ip(n) => {
+            let (active, inactive) = n.active_routes(&dev.ifaces);
+            let mut routes: Vec<Value> = active
+                .iter()
+                .map(|r| {
+                    json!({
+                        "dest": r.dest.to_string(),
+                        "via": r.next_hop.map(|h| h.to_string()),
+                        "iface": render::iface_name(sim, id, r.iface),
+                        "origin": r.origin.to_string(),
+                        "ok": true,
+                    })
+                })
+                .collect();
+            routes.extend(inactive.iter().map(|r| {
+                json!({
+                    "dest": r.dest.to_string(),
+                    "via": r.via.to_string(),
+                    "iface": null,
+                    "origin": r.origin.to_string(),
+                    "ok": false,
+                })
+            }));
+            out["forwarding"] = json!(n.forwarding);
+            out["gateway"] = json!(n.gateway.map(|g| g.to_string()));
+            out["routes"] = json!(routes);
+            out["arp"] = n
+                .arp_cache
+                .iter()
+                .map(|(ip, mac)| json!({ "ip": ip.to_string(), "mac": mac.to_string() }))
+                .collect();
+            out["services"] = n
+                .services
+                .iter()
+                .map(|v| json!({ "proto": v.proto.to_string(), "port": v.port, "name": v.name }))
+                .collect();
+            out["acl"] = json!({
+                "default": n.acl.default.to_string(),
+                "stateful": n.acl.stateful,
+                "rules": n.acl.rules.iter().map(|r| json!({
+                    "action": r.action.to_string(),
+                    "text": r.describe(|i| render::iface_name(sim, id, i).to_string()),
+                })).collect::<Vec<_>>(),
+            });
+            let clients: Vec<Value> = n
+                .dhcp_ifaces
+                .iter()
+                .map(|i| {
+                    let (state, ip) = match n.dhcp_clients.get(i) {
+                        Some(ClientState::Bound(b)) => ("bound", Some(b.ip.to_string())),
+                        Some(ClientState::Selecting { .. } | ClientState::Requesting { .. }) => {
+                            ("pending", None)
+                        }
+                        Some(ClientState::Failed) => ("failed", None),
+                        None => ("idle", None),
+                    };
+                    json!({ "iface": render::iface_name(sim, id, *i), "state": state, "ip": ip })
+                })
+                .collect();
+            let relays: Vec<Value> = n
+                .dhcp_relay
+                .iter()
+                .map(|(i, srv)| json!({ "iface": render::iface_name(sim, id, *i), "server": srv.to_string() }))
+                .collect();
+            let server = n.dhcp_server.as_ref().map(|srv| {
+                json!({
+                    "enabled": srv.enabled,
+                    "pools": srv.pools.iter().enumerate().map(|(k, p)| json!({
+                        "range": p.to_string(),
+                        "used": srv.bound_in(k, sim.now()),
+                        "size": p.size(),
+                    })).collect::<Vec<_>>(),
+                })
+            });
+            if !clients.is_empty() || !relays.is_empty() || server.is_some() {
+                out["dhcp"] = json!({ "clients": clients, "relays": relays, "server": server });
+            }
+            let dns_server = n.dns_server.as_ref().map(|srv| {
+                json!({
+                    "enabled": srv.enabled,
+                    "zone": srv.zone.iter().map(|(name, ip)| json!({ "name": name, "ip": ip.to_string() })).collect::<Vec<_>>(),
+                })
+            });
+            if n.effective_dns().is_some() || dns_server.is_some() {
+                out["dns"] = json!({
+                    "server": n.effective_dns().map(|x| x.to_string()),
+                    "learned": n.dns.is_none() && n.dns_learned.is_some(),
+                    "hosted": dns_server,
+                });
+            }
+        }
+    }
+    out
 }

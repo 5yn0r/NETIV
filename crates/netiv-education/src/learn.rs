@@ -45,7 +45,7 @@ pub fn paths() -> &'static [LearningPath] {
     CACHE.get_or_init(|| {
         [include_str!("../content/paths/fundamentals.yaml")]
             .iter()
-            .filter_map(|t| serde_yaml_ng::from_str(t).ok())
+            .filter_map(|t| netiv_topology::yaml::from_str(t).ok())
             .collect()
     })
 }

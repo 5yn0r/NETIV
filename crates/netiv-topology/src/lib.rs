@@ -11,6 +11,7 @@
 
 pub mod autoconf;
 pub mod generate;
+pub mod yaml;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -378,7 +379,7 @@ pub struct Loaded {
 
 /// Charge une topologie depuis un texte YAML.
 pub fn load_yaml(text: &str) -> Result<Loaded, TopologyErrors> {
-    let def: TopologyDef = serde_yaml_ng::from_str(text).map_err(|e| TopologyErrors {
+    let def: TopologyDef = yaml::from_str(text).map_err(|e| TopologyErrors {
         errors: vec![format!("YAML invalide : {e}")],
     })?;
     build(&def)
@@ -416,10 +417,10 @@ pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
             }
         };
         ids.insert(&d.name, id);
-        if let Some(role) = &d.role {
-            if let Err(e) = sim.set_role(id, Some(role)) {
-                errors.push(format!("{ctx} : {e}"));
-            }
+        if let Some(role) = &d.role
+            && let Err(e) = sim.set_role(id, Some(role))
+        {
+            errors.push(format!("{ctx} : {e}"));
         }
 
         if d.ports.is_some() && kind != DeviceKind::Switch {
@@ -753,13 +754,14 @@ fn dhcp_warnings(sim: &Simulation) -> Vec<String> {
             continue;
         };
         for i in &n.dhcp_ifaces {
-            if let Some(iface) = d.iface(*i) {
-                if iface.ip.is_none() && iface.link.is_some() {
-                    out.push(format!(
-                        "{}/{} : aucune adresse obtenue par DHCP (aucun serveur n'a répondu)",
-                        d.name, iface.name
-                    ));
-                }
+            if let Some(iface) = d.iface(*i)
+                && iface.ip.is_none()
+                && iface.link.is_some()
+            {
+                out.push(format!(
+                    "{}/{} : aucune adresse obtenue par DHCP (aucun serveur n'a répondu)",
+                    d.name, iface.name
+                ));
             }
         }
     }
@@ -1006,13 +1008,13 @@ pub fn lint(sim: &Simulation) -> Vec<String> {
                 .any(|i| i.ip.is_some_and(|n| n.contains(ip)))
         };
         if let Behavior::Ip(node) = &d.behavior {
-            if let Some(gw) = node.gateway {
-                if !on_link(gw) {
-                    w.push(format!(
-                        "{} : la passerelle {gw} n'est dans aucun réseau connecté de l'équipement",
-                        d.name
-                    ));
-                }
+            if let Some(gw) = node.gateway
+                && !on_link(gw)
+            {
+                w.push(format!(
+                    "{} : la passerelle {gw} n'est dans aucun réseau connecté de l'équipement",
+                    d.name
+                ));
             }
             for r in &node.static_routes {
                 if !on_link(r.via) {
@@ -1042,16 +1044,16 @@ pub fn lint(sim: &Simulation) -> Vec<String> {
                 .and_then(|dev| dev.iface(i))
                 .and_then(|x| x.ip)
         };
-        if let (Some(a), Some(b)) = (ip_of(l.a), ip_of(l.b)) {
-            if a.trunc() != b.trunc() {
-                w.push(format!(
-                    "câble {} ↔ {} : les deux extrémités sont dans des réseaux différents ({} et {})",
-                    end_name(sim, l.a),
-                    end_name(sim, l.b),
-                    a.trunc(),
-                    b.trunc()
-                ));
-            }
+        if let (Some(a), Some(b)) = (ip_of(l.a), ip_of(l.b))
+            && a.trunc() != b.trunc()
+        {
+            w.push(format!(
+                "câble {} ↔ {} : les deux extrémités sont dans des réseaux différents ({} et {})",
+                end_name(sim, l.a),
+                end_name(sim, l.b),
+                a.trunc(),
+                b.trunc()
+            ));
         }
     }
 
@@ -1088,13 +1090,14 @@ pub fn lint(sim: &Simulation) -> Vec<String> {
 
     // Pare-feu qui bloque tout.
     for d in sim.devices() {
-        if let Behavior::Ip(node) = &d.behavior {
-            if node.acl.default == AclAction::Deny && node.acl.rules.is_empty() {
-                w.push(format!(
-                    "{} : politique « deny » sans aucune règle : tout le trafic entrant est bloqué",
-                    d.name
-                ));
-            }
+        if let Behavior::Ip(node) = &d.behavior
+            && node.acl.default == AclAction::Deny
+            && node.acl.rules.is_empty()
+        {
+            w.push(format!(
+                "{} : politique « deny » sans aucune règle : tout le trafic entrant est bloqué",
+                d.name
+            ));
         }
     }
     w
@@ -1345,10 +1348,10 @@ pub struct Bundle {
     pub topology: TopologyDef,
     /// Scénario (trafic, pannes...) optionnel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scenario: Option<serde_yaml_ng::Value>,
+    pub scenario: Option<yaml::YamlValue>,
     /// Challenge optionnel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub challenge: Option<serde_yaml_ng::Value>,
+    pub challenge: Option<yaml::YamlValue>,
 }
 
 impl Bundle {
@@ -1365,14 +1368,14 @@ impl Bundle {
 
     /// Sérialise en YAML.
     pub fn to_yaml(&self) -> Result<String, TopologyErrors> {
-        serde_yaml_ng::to_string(self).map_err(|e| TopologyErrors {
+        yaml::to_string(self).map_err(|e| TopologyErrors {
             errors: vec![format!("sérialisation impossible : {e}")],
         })
     }
 
     /// Lit un bundle `.netiv` (YAML ou JSON).
     pub fn from_yaml(text: &str) -> Result<Self, TopologyErrors> {
-        let b: Bundle = serde_yaml_ng::from_str(text).map_err(|e| TopologyErrors {
+        let b: Bundle = yaml::from_str(text).map_err(|e| TopologyErrors {
             errors: vec![format!("fichier .netiv invalide : {e}")],
         })?;
         if b.format_version > NETIV_FORMAT_VERSION {
@@ -1390,13 +1393,10 @@ impl Bundle {
 /// Charge n'importe quel fichier de lab : un bundle `.netiv` (reconnu à sa
 /// clé `format_version`) ou une topologie simple.
 pub fn load_any(text: &str) -> Result<(Option<Bundle>, Loaded), TopologyErrors> {
-    let probe: serde_yaml_ng::Value =
-        serde_yaml_ng::from_str(text).map_err(|e| TopologyErrors {
-            errors: vec![format!("YAML invalide : {e}")],
-        })?;
-    let is_bundle = probe
-        .as_mapping()
-        .is_some_and(|m| m.contains_key("format_version"));
+    let probe: yaml::YamlValue = yaml::from_str(text).map_err(|e| TopologyErrors {
+        errors: vec![format!("YAML invalide : {e}")],
+    })?;
+    let is_bundle = probe.has_key("format_version");
     if is_bundle {
         let bundle = Bundle::from_yaml(text)?;
         let loaded = build(&bundle.topology)?;
@@ -1567,7 +1567,7 @@ links:
     #[test]
     fn export_then_reload_gives_the_same_network() {
         let mut original = load_yaml(FULL).unwrap();
-        let yaml = serde_yaml_ng::to_string(&export(&original.sim, "mvp")).unwrap();
+        let yaml = yaml::to_string(&export(&original.sim, "mvp")).unwrap();
         let mut again = load_yaml(&yaml).unwrap();
         assert_eq!(ping_trace(&mut original), ping_trace(&mut again));
     }
@@ -1702,7 +1702,7 @@ links:
             l.sim.trace().events().to_vec()
         };
         let mut a = load_yaml(SECURE).unwrap();
-        let yaml = serde_yaml_ng::to_string(&export(&a.sim, "dmz")).unwrap();
+        let yaml = yaml::to_string(&export(&a.sim, "dmz")).unwrap();
         let mut b = load_yaml(&yaml).unwrap();
         assert_eq!(run(&mut a), run(&mut b));
         // Le pare-feu autorise bien le web, c'est ce qu'on a rechargé.
@@ -1718,7 +1718,7 @@ links:
     #[test]
     fn export_omits_default_filtering_settings() {
         let l = load_yaml(MVP).unwrap();
-        let yaml = serde_yaml_ng::to_string(&export(&l.sim, "x")).unwrap();
+        let yaml = yaml::to_string(&export(&l.sim, "x")).unwrap();
         assert!(!yaml.contains("acl"), "{yaml}");
         assert!(!yaml.contains("services"), "{yaml}");
     }

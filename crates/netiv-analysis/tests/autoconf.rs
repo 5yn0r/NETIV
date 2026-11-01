@@ -93,7 +93,7 @@ links:
   - { a: "R1:eth1", b: "R2:eth0" }
   - { a: "R2:eth1", b: "SRV:eth0" }
 "#;
-    let mut def: TopologyDef = serde_yaml_ng::from_str(yaml).unwrap();
+    let mut def: TopologyDef = netiv_topology::yaml::from_str(yaml).unwrap();
     let report = autoconfigure(&mut def);
     let dev = |n: &str| def.devices.iter().find(|d| d.name == n).unwrap();
 
@@ -158,7 +158,7 @@ links:
   - { a: "SW1:r10", b: "R1:v10" }
   - { a: "SW1:r20", b: "R1:v20" }
 "#;
-    let mut def: TopologyDef = serde_yaml_ng::from_str(yaml).unwrap();
+    let mut def: TopologyDef = netiv_topology::yaml::from_str(yaml).unwrap();
     autoconfigure(&mut def);
     let ip = |n: &str| {
         def.devices.iter().find(|d| d.name == n).unwrap().interfaces[0]

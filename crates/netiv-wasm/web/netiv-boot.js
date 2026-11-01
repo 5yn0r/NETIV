@@ -19,9 +19,10 @@
  *   { source: 'netiv', type: 'ready', version }            moteur prêt (attend « init » si host=1)
  *   { source: 'netiv', type: 'profile', profile }          le profil a changé (JSON)
  *   { source: 'netiv', type: 'challenge-finished', kind, id, title, score, scoreDetail, hintsUsed, profile }
- *   { source: 'netiv', type: 'command', line, ok, error?, challenge? }
+ *   { source: 'netiv', type: 'command', line, ok, error?, output?, challenge? }
  *     une commande exécutée (console ou boutons) : réussie ou non, le message
- *     d'erreur, et l'état de l'épreuve en cours (id, indices, diagnostic, objectif)
+ *     d'erreur, sa sortie (1 500 caractères au plus) et l'état de l'épreuve en
+ *     cours (id, indices, diagnostic, objectif)
  *   { source: 'netiv', type: 'lab', requestId, id, text }  réponse à « export-lab »
  *   { source: 'netiv', type: 'error', error }              le moteur n'a pas pu démarrer
  */
@@ -103,6 +104,7 @@ function watch(engine) {
           line: lineOf(body),
           ok: !data.error,
           error: data.error ? String(data.error).slice(0, 300) : undefined,
+          output: typeof data.output === 'string' ? data.output.slice(0, 1500) : undefined,
           challenge: challengeOf(data.snapshot),
         });
       }

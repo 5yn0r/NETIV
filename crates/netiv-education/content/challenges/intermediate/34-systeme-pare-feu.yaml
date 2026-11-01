@@ -1,0 +1,26 @@
+id: systeme-02
+title: Le serveur durci ne répond plus en HTTPS
+topic: services
+difficulty: medium
+track: system
+ticket: { id: "3114", requester: "Équipe sécurité" }
+description: |
+  « On a durci le pare-feu local de SRV-WEB : tout est bloqué sauf l'admin SSH.
+  Depuis, l'intranet en HTTPS ne répond plus. On veut garder le reste fermé. »
+
+  Rends l'intranet (192.168.50.10, port 443) accessible depuis PC-S2, sans
+  rouvrir le serveur entièrement.
+time_limit_minutes: 20
+topology_ref: multisite
+objective: { from: PC-S2, to: 192.168.50.10, service: { proto: tcp, port: 443 } }
+faults:
+  - acl_insert: { device: SRV-WEB, rule: { action: allow, proto: tcp, port: "22", comment: "admin SSH" } }
+  - acl_default: { device: SRV-WEB, action: deny }
+solution:
+  cause: filtered
+  device: SRV-WEB
+  explanation: |
+    La politique par défaut du serveur est passée à « deny » et seule une règle pour
+    le SSH a été ajoutée. Le ping et le HTTPS restent sans réponse. Il faut
+    autoriser explicitement le port 443.
+  commands: ["acl add SRV-WEB allow tcp port 443"]

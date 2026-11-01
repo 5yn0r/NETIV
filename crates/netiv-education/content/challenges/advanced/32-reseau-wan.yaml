@@ -1,0 +1,23 @@
+id: reseau-04
+title: Agence coupée du monde
+topic: routing
+difficulty: hard
+ticket: { id: "2203", requester: "Koné, responsable d'agence" }
+description: |
+  « Depuis 10 h, plus rien ne marche à l'agence : ni l'intranet ni l'appli. Les
+  deux postes sont touchés. Des travaux ont eu lieu dans la rue ce matin. »
+
+  Rends l'application (192.168.50.30, port 8080) accessible depuis PC-A2.
+time_limit_minutes: 25
+topology_ref: multisite
+objective: { from: PC-A2, to: 192.168.50.30, service: { proto: tcp, port: 8080 } }
+faults:
+  - link_down: { a: "R-SIEGE:eth3" }
+solution:
+  cause: link-down
+  device: R-SIEGE
+  explanation: |
+    La liaison WAN entre le siège et l'agence est coupée. Les postes joignent leur
+    passerelle, puis plus rien : le traceroute s'arrête sur R-AGENCE et « links »
+    montre le câble R-SIEGE:eth3 hors service.
+  commands: ["cable R-SIEGE eth3 restore"]

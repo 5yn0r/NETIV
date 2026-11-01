@@ -1,0 +1,24 @@
+id: systeme-04
+title: Le serveur ne répond qu'au siège
+topic: services
+difficulty: hard
+track: system
+ticket: { id: "3140", requester: "Koné, responsable d'agence" }
+description: |
+  « Au siège, l'application marche. Chez nous, à l'agence, la page tourne dans
+  le vide. Le serveur a été réinstallé la semaine dernière. »
+
+  Rends l'application (192.168.50.30, port 8080) accessible depuis PC-A1.
+time_limit_minutes: 25
+topology_ref: multisite
+objective: { from: PC-A1, to: 192.168.50.30, service: { proto: tcp, port: 8080 } }
+faults:
+  - set_gateway: { device: SRV-APP }
+solution:
+  cause: missing-route
+  device: SRV-APP
+  explanation: |
+    À la réinstallation, le serveur n'a pas reçu de passerelle. Il répond à son
+    propre réseau, mais ne sait pas où renvoyer les réponses vers l'agence.
+    « route SRV-APP » ne montre que le réseau local.
+  commands: ["gateway SRV-APP 192.168.50.1"]

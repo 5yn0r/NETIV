@@ -33,26 +33,26 @@ impl IpNode {
         let name = normalize(&name);
         let tid = out.new_trace_id();
         // Réponse encore valide en cache : pas de question au serveur.
-        if let Some(&(ip, expires)) = self.dns_cache.get(&name) {
-            if expires > ctx.now {
-                out.trace(
-                    Some(tid),
-                    TraceKind::DnsLookup {
-                        name: name.clone(),
-                        server: None,
-                    },
-                );
-                out.trace(
-                    Some(tid),
-                    TraceKind::DnsResult {
-                        name,
-                        outcome: DnsOutcome::Resolved(ip),
-                        cached: true,
-                    },
-                );
-                self.run_after(ctx, out, ip, then);
-                return;
-            }
+        if let Some(&(ip, expires)) = self.dns_cache.get(&name)
+            && expires > ctx.now
+        {
+            out.trace(
+                Some(tid),
+                TraceKind::DnsLookup {
+                    name: name.clone(),
+                    server: None,
+                },
+            );
+            out.trace(
+                Some(tid),
+                TraceKind::DnsResult {
+                    name,
+                    outcome: DnsOutcome::Resolved(ip),
+                    cached: true,
+                },
+            );
+            self.run_after(ctx, out, ip, then);
+            return;
         }
         let Some(server) = self.effective_dns() else {
             out.trace(

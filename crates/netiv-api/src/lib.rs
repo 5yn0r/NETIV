@@ -189,6 +189,7 @@ pub fn router(cfg: ApiConfig) -> Router {
     Router::new()
         .route("/", get(web::index))
         .route("/app.js", get(web::app_js))
+        .route("/help.js", get(web::help_js))
         .route("/style.css", get(web::style_css))
         .route("/favicon.svg", get(web::favicon))
         .route("/api/info", get(info))

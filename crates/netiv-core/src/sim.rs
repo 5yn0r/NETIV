@@ -693,10 +693,8 @@ impl Simulation {
             node.dhcp_ifaces.remove(&iface);
             node.dhcp_clients.remove(&iface);
         }
-        if on {
-            if let Some(i) = self.dev_mut(device)?.ifaces.get_mut(iface.0 as usize) {
-                i.ip = None;
-            }
+        if on && let Some(i) = self.dev_mut(device)?.ifaces.get_mut(iface.0 as usize) {
+            i.ip = None;
         }
         let text = if on {
             format!("{label} : adresse obtenue par DHCP")
@@ -913,10 +911,10 @@ impl Simulation {
 
     /// Définit le rôle d'un équipement (voir `device::ROLES`).
     pub fn set_role(&mut self, device: DeviceId, role: Option<&str>) -> Result<(), NetivError> {
-        if let Some(r) = role {
-            if !crate::device::ROLES.contains(&r) {
-                return Err(NetivError::UnknownRole(r.to_string()));
-            }
+        if let Some(r) = role
+            && !crate::device::ROLES.contains(&r)
+        {
+            return Err(NetivError::UnknownRole(r.to_string()));
         }
         self.dev_mut(device)?.role = role.map(str::to_string);
         Ok(())

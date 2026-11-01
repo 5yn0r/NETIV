@@ -1,0 +1,24 @@
+id: systeme-01
+title: L'intranet est tombé après la maintenance
+topic: services
+difficulty: easy
+track: system
+ticket: { id: "3101", requester: "Bamba, RH" }
+description: |
+  « Depuis la maintenance de cette nuit, l'intranet affiche une erreur. Le
+  serveur est allumé, l'informatique l'a vérifié. »
+
+  Rends l'intranet (intranet.siege, port 80) accessible depuis PC-S1.
+time_limit_minutes: 15
+topology_ref: multisite
+objective: { from: PC-S1, to: 192.168.50.10, name: intranet.siege, service: { proto: tcp, port: 80 } }
+faults:
+  - stop_service: { device: SRV-WEB, proto: tcp, port: 80 }
+solution:
+  cause: service-down
+  device: SRV-WEB
+  explanation: |
+    Le serveur répond au ping et sur le port 443, mais plus rien n'écoute sur le
+    port 80 : la connexion est refusée. Le service web n'a pas été relancé après la
+    maintenance.
+  commands: ["service add SRV-WEB tcp 80 http"]

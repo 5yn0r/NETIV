@@ -1,0 +1,42 @@
+id: range-05
+title: Un poste cherche des serveurs SSH
+difficulty: medium
+description: |
+  ALERTE — L'antivirus de PC02 a sonné puis s'est tu. Peu après, le pare-feu
+  voit un poste du LAN contacter une série d'adresses du réseau serveurs sur
+  le port 22.
+
+  Trouve le poste et ce qu'il fait. Le SSH vers les serveurs ne doit rester
+  ouvert qu'au poste d'administration (PC01). Le partage de fichiers doit
+  continuer à marcher.
+time_limit_minutes: 25
+topology_ref: cyber
+faults:
+  - acl_insert:
+      device: FW1
+      rule: { action: allow, proto: tcp, src: 192.168.10.0/24, dst: 192.168.20.0/24, port: "22", in: eth2, comment: "admin SSH serveurs" }
+traffic:
+  - { at_s: 3, from: PC02, to: 192.168.20.10, proto: tcp, ports: [22] }
+  - { at_s: 4, from: PC02, to: 192.168.20.11, proto: tcp, ports: [22] }
+  - { at_s: 5, from: PC02, to: 192.168.20.12, proto: tcp, ports: [22] }
+  - { at_s: 6, from: PC02, to: 192.168.20.13, proto: tcp, ports: [22] }
+  - { at_s: 7, from: PC02, to: 192.168.20.14, proto: tcp, ports: [22] }
+  - { at_s: 8, from: PC02, to: 192.168.20.20, proto: tcp, ports: [22] }
+culprit:
+  device: PC02
+  behavior: host-sweep
+must_block:
+  - { from: PC02, to: 192.168.20.20, service: { proto: tcp, port: 22 } }
+must_work:
+  - { from: PC01, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+  - { from: PC02, to: 192.168.20.20, service: { proto: tcp, port: 445 } }
+  - { from: INET, to: 10.9.0.10, service: { proto: tcp, port: 80 } }
+solution:
+  explanation: |
+    PC02 contacte six adresses du réseau serveurs à la suite sur le port 22 : un
+    balayage d'hôtes à la recherche de serveurs SSH. La règle « admin SSH serveurs »
+    ouvre le port 22 à tout le LAN. On la remplace par une règle limitée au poste
+    d'administration.
+  commands:
+    - "acl del FW1 1"
+    - "acl insert FW1 1 allow tcp src 192.168.10.11/32 dst 192.168.20.0/24 port 22 in eth2"

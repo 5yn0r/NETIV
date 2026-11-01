@@ -86,7 +86,7 @@
         <div class="seg" role="tablist" aria-label="Catalogue">
           <button role="tab" data-lib="networks" aria-selected="true">Réseaux</button>
           <button role="tab" data-lib="challenges" aria-selected="false">Défis</button>
-          <button role="tab" data-lib="ranges" aria-selected="false">Cyber range</button>
+          <button role="tab" data-lib="ranges" aria-selected="false" title="Cyber range : enquête sur un incident">Cyber</button>
           <button role="tab" data-lib="generate" aria-selected="false">Générer</button>
         </div>
         <div id="library" class="library"></div>
@@ -169,13 +169,13 @@
             <button id="console-clear" type="button" title="Effacer la console (ou « clear »)" aria-label="Effacer la console"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
             <button id="console-min" type="button" title="Réduire la console" aria-label="Réduire la console"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
             <button id="console-max" type="button" aria-pressed="false" title="Agrandir la console" aria-label="Agrandir la console"><svg class="ic i-max" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg><svg class="ic i-restore" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg></button>
-            <button id="console-hide" type="button" title="Masquer la console (bouton Console en haut pour la réafficher)" aria-label="Masquer la console"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+            <button id="console-hide" type="button" title="Masquer la console" aria-label="Masquer la console"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           </div>
         </div>
         <div id="console-out" class="console-out" role="log" aria-live="polite" aria-label="Sortie de la console" tabindex="0"></div>
         <div id="console-suggest" class="console-suggest" role="group" aria-label="Suggestions" hidden></div>
         <form id="console-form" class="console-form" autocomplete="off">
-          <span class="prompt" aria-hidden="true">netiv<b>›</b></span>
+          <span class="prompt" id="console-prompt" aria-hidden="true">netiv<b>›</b></span>
           <input id="console-in" type="text" spellcheck="false" autocapitalize="off" aria-label="Commande NETIV" aria-describedby="console-hint" placeholder="ping PC1 192.168.2.10   (tape « help »)">
           <span id="console-hint" class="console-hint"><kbd>Entrée</kbd> exécuter · <kbd>↑</kbd> historique · <kbd>Tab</kbd> compléter</span>
         </form>
@@ -195,7 +195,7 @@
       </div>
       <div class="frame-tools" role="group" aria-label="Taille du panneau">
         <button id="panel-wide" type="button" aria-pressed="false" title="Élargir le panneau" aria-label="Élargir le panneau"><svg class="ic i-max" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg><svg class="ic i-restore" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg></button>
-        <button id="panel-hide" type="button" title="Masquer le panneau (bouton Détails en haut pour le réafficher)" aria-label="Masquer le panneau"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        <button id="panel-hide" type="button" title="Masquer le panneau" aria-label="Masquer le panneau"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       </div>
       <div id="tab-device" class="tab-body" role="tabpanel"></div>
@@ -208,30 +208,16 @@
 
   <input id="file-import" type="file" accept=".netiv,.yaml,.yml,.json" hidden>
 
-  <dialog id="help-dialog" aria-labelledby="help-title">
-    <form method="dialog">
-      <h2 id="help-title">Aide</h2>
-      <h3>Raccourcis clavier</h3>
-      <dl class="help-grid">
-        <dt><kbd>[</kbd></dt><dd>afficher / masquer le catalogue</dd>
-        <dt><kbd>]</kbd></dt><dd>afficher / masquer le panneau de détails</dd>
-        <dt><kbd>`</kbd></dt><dd>afficher / masquer la console</dd>
-        <dt><kbd>F</kbd></dt><dd>schéma seul (plein cadre)</dd>
-        <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>zoomer, dézoomer, tout afficher</dd>
-        <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>espace</kbd></dt><dd>dans « Parcours » : étape précédente, suivante, lecture</dd>
-        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>dans la console : historique des commandes</dd>
-        <dt><kbd>B</kbd></dt><dd>mode Construire (dessiner, câbler, configurer)</dd>
-        <dt><kbd>C</kbd> <kbd>V</kbd></dt><dd>en mode Construire : outil Câble, outil Sélection</dd>
-        <dt><kbd>Suppr</kbd></dt><dd>supprimer l'équipement ou le câble sélectionné</dd>
-        <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>annuler / rétablir une modification</dd>
-        <dt><kbd>?</kbd></dt><dd>cette aide</dd>
-      </dl>
-      <p class="muted">Schéma : molette pour zoomer, glisser le fond pour se déplacer, glisser un équipement pour le placer.
-        Bords des zones : glisser pour redimensionner (ou flèches au clavier), double-clic pour revenir à la taille par défaut.</p>
-      <h3>Commandes</h3>
-      <pre id="help-commands">Ouvre un lab pour afficher la liste des commandes.</pre>
-      <button class="primary" value="close">Fermer</button>
-    </form>
+  <dialog id="help-dialog" class="doc" aria-labelledby="help-title">
+    <div class="doc-head">
+      <h2 id="help-title">Documentation</h2>
+      <input id="doc-search" type="search" placeholder="Chercher : ping, vlan, passerelle, DNS…" aria-label="Chercher une commande" autocomplete="off" spellcheck="false">
+      <form method="dialog"><button class="icon-btn" value="close" aria-label="Fermer la documentation" title="Fermer  Échap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></form>
+    </div>
+    <div class="doc-main">
+      <nav id="doc-nav" class="doc-nav" aria-label="Sections de la documentation"></nav>
+      <div id="doc-body" class="doc-body" tabindex="-1"></div>
+    </div>
   </dialog>
 
   <dialog id="profile-dialog" aria-labelledby="profile-title">

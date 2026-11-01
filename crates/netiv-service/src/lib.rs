@@ -33,7 +33,7 @@ use netiv_topology::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use catalog::{Catalog, CatalogEntry, catalog};
+pub use catalog::{Catalog, CatalogEntry, SolutionEntry, catalog, solutions};
 pub use request::Reply;
 
 /// Nombre maximal de labs ouverts en même temps.
@@ -194,7 +194,7 @@ pub fn not_during_challenge(s: &Session) -> ServiceResult<()> {
     if s.challenge_info().is_some_and(|c| !c.finished) {
         return Err(ServiceError::new(
             ErrorKind::Forbidden,
-            "indisponible pendant un challenge : c'est à toi de trouver",
+            "indisponible pendant un challenge",
         ));
     }
     Ok(())
@@ -370,6 +370,9 @@ pub struct ChallengeEntry {
     pub difficulty: &'static str,
     /// Durée conseillée.
     pub minutes: u32,
+    /// Parcours (`support`, `system`), absent pour un défi réseau.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track: Option<String>,
 }
 
 /// Un cyber range du catalogue.
@@ -887,6 +890,7 @@ impl Service {
                     topic: c.topic.clone(),
                     difficulty: c.difficulty.slug(),
                     minutes: c.time_limit_minutes,
+                    track: c.track.clone(),
                 })
                 .collect(),
             ranges: builtin::ranges()
@@ -1375,8 +1379,8 @@ impl Service {
         match q.format.as_deref().unwrap_or("json") {
             "json" => Ok(TopologyView::Json { topology: def }),
             "yaml" => {
-                let text =
-                    serde_yaml_ng::to_string(&def).map_err(|e| ServiceError::bad(e.to_string()))?;
+                let text = netiv_topology::yaml::to_string(&def)
+                    .map_err(|e| ServiceError::bad(e.to_string()))?;
                 Ok(TopologyView::Text(FormattedText {
                     format: "yaml".to_string(),
                     text,

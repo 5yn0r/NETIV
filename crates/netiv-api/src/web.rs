@@ -17,6 +17,13 @@ pub async fn app_js() -> impl IntoResponse {
     )
 }
 
+pub async fn help_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        include_str!("../web/help.js"),
+    )
+}
+
 pub async fn style_css() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/css; charset=utf-8")],

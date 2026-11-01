@@ -26,11 +26,15 @@ Le script :
 
 | Fichier | Rôle |
 |---|---|
-| `index.html`, `app.js`, `style.css`, `favicon.svg` | l'interface de `netiv serve`, inchangée (seul le chargement de `app.js` passe par `netiv-boot.js`) |
+| `index.html`, `app.js`, `help.js` (documentation du bouton « ? »), `style.css`, `favicon.svg` | l'interface de `netiv serve`, inchangée (seul le chargement de `app.js` passe par `netiv-boot.js`) |
 | `netiv-boot.js` | charge le module, crée le moteur, l'installe pour l'interface, dialogue avec la page hôte |
 | `netiv_wasm.js`, `netiv_wasm_bg.wasm`, `netiv_wasm.d.ts` | le moteur (wasm-bindgen) |
-| `catalog.json` | les 28 défis et 3 cyber ranges (titre, énoncé, thème, difficulté, durée, parcours et ticket de support), sans solutions |
+| `catalog.json` | les 36 défis et 7 cyber ranges (titre, énoncé, thème, difficulté, durée, parcours et ticket de support), sans solutions |
 | `manifest.json` | version, taille et empreinte SHA-256 de chaque fichier, poids à télécharger |
+
+Les solutions des épreuves ne sont **pas** dans ce dossier. Le serveur d'une plateforme hôte
+(tuteur, explication après l'épreuve) les obtient à part, sans jamais les envoyer au navigateur :
+`cargo run -p netiv-wasm --example solutions > solutions.json`.
 
 La démo se sert avec n'importe quel serveur de fichiers statiques. Elle ne fait **aucune
 requête** en dehors de ces fichiers.
@@ -41,14 +45,19 @@ Mesurée sur NETIV 0.4.0 (rustc 1.99, wasm-bindgen 0.2, binaryen 133) :
 
 | | Octets |
 |---|---|
-| `.wasm` brut | 2 073 960 (1,98 Mo) |
-| `.wasm` gzip -9 | **739 569 (722 Ko)** |
-| `.wasm` brotli 11 | **549 846 (537 Ko)** |
-| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 792 465 (774 Ko) |
+| `.wasm` brut | 2 798 287 (2,67 Mo) |
+| `.wasm` gzip -9 | **922 428 (901 Ko)** |
+| `.wasm` brotli 11 | **655 322 (640 Ko)** |
+| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 995 039 (972 Ko) |
 
 L'objectif (moins de 1,5 Mo compressé) est atteint sans retirer de module : sécurité,
 forensique, générateurs et cyber ranges sont tous présents. La CI échoue si le module compressé
 dépasse 1,5 Mo.
+
+Le moteur YAML ([serde-saphyr](https://crates.io/crates/serde-saphyr), écrit en Rust sûr et
+protégé contre les documents piégés) compte pour environ 150 Ko compressés : NETIV lit des YAML
+fournis par les élèves (topologies, fichiers `.netiv`, labs partagés), l'ancien moteur
+(`unsafe-libyaml`) n'était plus maintenu.
 
 ## API JavaScript
 
@@ -118,7 +127,7 @@ NETIV → page hôte (`source: 'netiv'`) :
 | `profile` | `profile` (JSON) | le profil a changé (tentative, leçon lue, épreuve réussie) |
 | `challenge-finished` | `kind`, `id`, `title`, `score`, `scoreDetail`, `hintsUsed`, `profile` | une épreuve vient d'être réussie |
 | `lab` | `requestId`, `id`, `text`, `error?` | réponse à `export-lab` |
-| `command` | `line`, `ok`, `error?`, `challenge?` (`kind`, `id`, `hintsUsed`, `answered`, `fixed`, `finished`) | une commande vient d'être exécutée (console ou boutons). Sert au journal d'usage de la plateforme hôte |
+| `command` | `line`, `ok`, `error?`, `output?` (1 500 caractères au plus), `challenge?` (`kind`, `id`, `hintsUsed`, `answered`, `fixed`, `finished`) | une commande vient d'être exécutée (console ou boutons). Sert au journal d'usage et au tuteur de la plateforme hôte |
 | `error` | `error` | le moteur n'a pas pu démarrer |
 
 **Disposition « lab »** (`layout: 'lab'`) : pour une épreuve imposée par la page hôte, le

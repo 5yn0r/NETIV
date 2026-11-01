@@ -18,7 +18,7 @@ members = [
 [workspace.package]
 version = "0.4.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 repository = ""
 authors = ["NETIV contributors"]
@@ -27,7 +27,7 @@ authors = ["NETIV contributors"]
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml_ng = "0.10"
+serde-saphyr = { version = "2.0.0", default-features = false, features = ["serialize", "deserialize"] }
 clap = { version = "4", features = ["derive"] }
 netiv-core = { path = "crates/netiv-core" }
 netiv-topology = { path = "crates/netiv-topology" }

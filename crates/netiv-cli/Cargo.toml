@@ -23,7 +23,6 @@ netiv-diagnostics = { workspace = true }
 netiv-chaos = { workspace = true }
 netiv-education = { workspace = true }
 netiv-security = { workspace = true }
-serde_yaml_ng = { workspace = true }
 netiv-analysis = { workspace = true }
 
 [dev-dependencies]

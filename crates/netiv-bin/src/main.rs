@@ -173,7 +173,7 @@ fn generate_cmd(
         hosts,
         seed,
     })?;
-    let yaml = serde_yaml_ng::to_string(&def).map_err(|e| e.to_string())?;
+    let yaml = netiv_topology::yaml::to_string(&def).map_err(|e| e.to_string())?;
     match out {
         Some(path) => std::fs::write(path, yaml)
             .map_err(|e| format!("écriture de « {} » impossible : {e}", path.display())),
