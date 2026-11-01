@@ -304,10 +304,10 @@ fn flows(cap: &Capture) -> Vec<Flow> {
             TraceKind::PingError { .. } | TraceKind::PingTimeout { .. } => Some(false),
             _ => None,
         };
-        if let (Some(ok), Some(tid)) = (result, e.trace_id) {
-            if let Some(f) = out.iter_mut().find(|f| f.trace_id == Some(tid)) {
-                f.ok = Some(ok);
-            }
+        if let (Some(ok), Some(tid)) = (result, e.trace_id)
+            && let Some(f) = out.iter_mut().find(|f| f.trace_id == Some(tid))
+        {
+            f.ok = Some(ok);
         }
     }
     out
@@ -629,14 +629,14 @@ fn detect_denials(cap: &Capture, out: &mut Vec<ForensicFinding>) {
 fn detect_arp_conflicts(cap: &Capture, out: &mut Vec<ForensicFinding>) {
     let mut claims: BTreeMap<Ipv4Addr, BTreeMap<String, (DeviceId, SimTime)>> = BTreeMap::new();
     for e in &cap.events {
-        if let TraceKind::FrameSent { frame, .. } = &e.kind {
-            if let netiv_core::packet::EtherPayload::Arp(a) = &frame.payload {
-                claims
-                    .entry(a.sender_ip)
-                    .or_default()
-                    .entry(a.sender_mac.to_string())
-                    .or_insert((e.device, e.time));
-            }
+        if let TraceKind::FrameSent { frame, .. } = &e.kind
+            && let netiv_core::packet::EtherPayload::Arp(a) = &frame.payload
+        {
+            claims
+                .entry(a.sender_ip)
+                .or_default()
+                .entry(a.sender_mac.to_string())
+                .or_insert((e.device, e.time));
         }
     }
     for (ip, macs) in claims {

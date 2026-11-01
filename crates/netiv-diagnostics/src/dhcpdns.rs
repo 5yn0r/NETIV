@@ -249,28 +249,27 @@ pub fn dhcp_cause(sim: &Simulation, src: DeviceId) -> Option<RootCause> {
 
     // Configuration reçue d'un serveur pirate.
     for st in n.dhcp_clients.values() {
-        if let ClientState::Bound(b) = st {
-            if let Some((sd, _)) = owner_of(sim, b.server) {
-                if is_rogue_server(sim, sd) {
-                    let rogue = name(sim, sd);
-                    let mut c = RootCause::new(
-                        CauseKind::RogueDhcp,
-                        &rogue,
-                        format!(
-                            "{me} a reçu sa configuration de {rogue} ({}), une machine d'utilisateur qui distribue des adresses : passerelle {}",
-                            b.server,
-                            b.gateway.map_or("aucune".to_string(), |g| g.to_string())
-                        ),
-                    );
-                    c.actual = Some(format!("serveur {}", b.server));
-                    c.expected = legit_servers(sim)
-                        .first()
-                        .and_then(|d| first_ip(sim, *d))
-                        .map(|ip| format!("serveur {ip}"));
-                    c.fix = Some(format!("dhcp server {rogue} off ; dhcp {me} renew"));
-                    return Some(c);
-                }
-            }
+        if let ClientState::Bound(b) = st
+            && let Some((sd, _)) = owner_of(sim, b.server)
+            && is_rogue_server(sim, sd)
+        {
+            let rogue = name(sim, sd);
+            let mut c = RootCause::new(
+                CauseKind::RogueDhcp,
+                &rogue,
+                format!(
+                    "{me} a reçu sa configuration de {rogue} ({}), une machine d'utilisateur qui distribue des adresses : passerelle {}",
+                    b.server,
+                    b.gateway.map_or("aucune".to_string(), |g| g.to_string())
+                ),
+            );
+            c.actual = Some(format!("serveur {}", b.server));
+            c.expected = legit_servers(sim)
+                .first()
+                .and_then(|d| first_ip(sim, *d))
+                .map(|ip| format!("serveur {ip}"));
+            c.fix = Some(format!("dhcp server {rogue} off ; dhcp {me} renew"));
+            return Some(c);
         }
     }
 
@@ -467,8 +466,8 @@ pub fn dhcp_cause(sim: &Simulation, src: DeviceId) -> Option<RootCause> {
         return Some(c);
     }
     // Les demandes relayées n'atteignent pas le serveur : problème de routage.
-    if let (Some(rd), Some(sip)) = (relay_dev, first_ip(sim, server)) {
-        if let Ok(d) = diagnose(
+    if let (Some(rd), Some(sip)) = (relay_dev, first_ip(sim, server))
+        && let Ok(d) = diagnose(
             sim,
             None,
             &Request {
@@ -476,11 +475,10 @@ pub fn dhcp_cause(sim: &Simulation, src: DeviceId) -> Option<RootCause> {
                 dst: sip,
                 service: None,
             },
-        ) {
-            if let Some(c) = d.cause.filter(|c| c.kind != CauseKind::Unknown) {
-                return Some(c);
-            }
-        }
+        )
+        && let Some(c) = d.cause.filter(|c| c.kind != CauseKind::Unknown)
+    {
+        return Some(c);
     }
     Some(RootCause::new(
         CauseKind::Unknown,

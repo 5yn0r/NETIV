@@ -255,11 +255,11 @@ impl IpNode {
                     lease_s: m.lease_s,
                 };
                 out.configure_iface(iface, Some(net));
-                if let Some(g) = m.gateway {
-                    if self.gateway.is_none() || self.gateway_learned {
-                        self.gateway = Some(g);
-                        self.gateway_learned = true;
-                    }
+                if let Some(g) = m.gateway
+                    && (self.gateway.is_none() || self.gateway_learned)
+                {
+                    self.gateway = Some(g);
+                    self.gateway_learned = true;
                 }
                 self.dns_learned = m.dns;
                 if let Some(t) = self.dhcp_timers.remove(&iface) {
@@ -334,47 +334,46 @@ impl IpNode {
             return;
         }
         // Relais : une demande de client diffusée sur une interface relais…
-        if m.op.from_client() && packet.dst == Ipv4Addr::BROADCAST {
-            if let (Some(&server), Some(gi)) = (
+        if m.op.from_client()
+            && packet.dst == Ipv4Addr::BROADCAST
+            && let (Some(&server), Some(gi)) = (
                 self.dhcp_relay.get(&ingress),
                 ctx.iface(ingress).and_then(|i| i.ip).map(|n| n.addr()),
-            ) {
-                let mut fwd = m.clone();
-                fwd.giaddr = fwd.giaddr.or(Some(gi));
-                self.dhcp_event(out, tid, ingress, DhcpEvent::Relayed { to: server });
-                self.originate(
-                    ctx,
-                    out,
-                    Some(gi),
-                    server,
-                    dhcp_payload(SERVER_PORT, SERVER_PORT, fwd),
-                    tid,
-                );
-                return;
-            }
+            )
+        {
+            let mut fwd = m.clone();
+            fwd.giaddr = fwd.giaddr.or(Some(gi));
+            self.dhcp_event(out, tid, ingress, DhcpEvent::Relayed { to: server });
+            self.originate(
+                ctx,
+                out,
+                Some(gi),
+                server,
+                dhcp_payload(SERVER_PORT, SERVER_PORT, fwd),
+                tid,
+            );
+            return;
         }
         // … ou la réponse du serveur, à rediffuser sur le réseau du client.
-        if !m.op.from_client() {
-            if let Some(gi) = m.giaddr {
-                if let Some(back) = ctx
-                    .ifaces
-                    .iter()
-                    .find(|i| i.ip.is_some_and(|n| n.addr() == gi))
-                {
-                    let back_id = back.id;
-                    self.dhcp_event(out, tid, back_id, DhcpEvent::RelayedBack { op: m.op });
-                    self.dhcp_broadcast(
-                        ctx,
-                        out,
-                        back_id,
-                        gi,
-                        (SERVER_PORT, CLIENT_PORT),
-                        m.clone(),
-                        tid,
-                    );
-                    return;
-                }
-            }
+        if !m.op.from_client()
+            && let Some(gi) = m.giaddr
+            && let Some(back) = ctx
+                .ifaces
+                .iter()
+                .find(|i| i.ip.is_some_and(|n| n.addr() == gi))
+        {
+            let back_id = back.id;
+            self.dhcp_event(out, tid, back_id, DhcpEvent::RelayedBack { op: m.op });
+            self.dhcp_broadcast(
+                ctx,
+                out,
+                back_id,
+                gi,
+                (SERVER_PORT, CLIENT_PORT),
+                m.clone(),
+                tid,
+            );
+            return;
         }
         // Personne ici ne s'en occupe.
         out.trace(
@@ -498,16 +497,16 @@ impl IpNode {
                 }
             }
             DhcpOp::Release => {
-                if let Some(ip) = m.ciaddr {
-                    if srv.release(ip, m.client_mac) {
-                        out.trace(
-                            Some(tid),
-                            TraceKind::Dhcp {
-                                iface: ingress,
-                                event: DhcpEvent::ServerReleased { ip },
-                            },
-                        );
-                    }
+                if let Some(ip) = m.ciaddr
+                    && srv.release(ip, m.client_mac)
+                {
+                    out.trace(
+                        Some(tid),
+                        TraceKind::Dhcp {
+                            iface: ingress,
+                            event: DhcpEvent::ServerReleased { ip },
+                        },
+                    );
                 }
                 return;
             }

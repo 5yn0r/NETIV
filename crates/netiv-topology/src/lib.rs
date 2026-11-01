@@ -417,10 +417,10 @@ pub fn build(def: &TopologyDef) -> Result<Loaded, TopologyErrors> {
             }
         };
         ids.insert(&d.name, id);
-        if let Some(role) = &d.role {
-            if let Err(e) = sim.set_role(id, Some(role)) {
-                errors.push(format!("{ctx} : {e}"));
-            }
+        if let Some(role) = &d.role
+            && let Err(e) = sim.set_role(id, Some(role))
+        {
+            errors.push(format!("{ctx} : {e}"));
         }
 
         if d.ports.is_some() && kind != DeviceKind::Switch {
@@ -754,13 +754,14 @@ fn dhcp_warnings(sim: &Simulation) -> Vec<String> {
             continue;
         };
         for i in &n.dhcp_ifaces {
-            if let Some(iface) = d.iface(*i) {
-                if iface.ip.is_none() && iface.link.is_some() {
-                    out.push(format!(
-                        "{}/{} : aucune adresse obtenue par DHCP (aucun serveur n'a répondu)",
-                        d.name, iface.name
-                    ));
-                }
+            if let Some(iface) = d.iface(*i)
+                && iface.ip.is_none()
+                && iface.link.is_some()
+            {
+                out.push(format!(
+                    "{}/{} : aucune adresse obtenue par DHCP (aucun serveur n'a répondu)",
+                    d.name, iface.name
+                ));
             }
         }
     }
@@ -1007,13 +1008,13 @@ pub fn lint(sim: &Simulation) -> Vec<String> {
                 .any(|i| i.ip.is_some_and(|n| n.contains(ip)))
         };
         if let Behavior::Ip(node) = &d.behavior {
-            if let Some(gw) = node.gateway {
-                if !on_link(gw) {
-                    w.push(format!(
-                        "{} : la passerelle {gw} n'est dans aucun réseau connecté de l'équipement",
-                        d.name
-                    ));
-                }
+            if let Some(gw) = node.gateway
+                && !on_link(gw)
+            {
+                w.push(format!(
+                    "{} : la passerelle {gw} n'est dans aucun réseau connecté de l'équipement",
+                    d.name
+                ));
             }
             for r in &node.static_routes {
                 if !on_link(r.via) {
@@ -1043,16 +1044,16 @@ pub fn lint(sim: &Simulation) -> Vec<String> {
                 .and_then(|dev| dev.iface(i))
                 .and_then(|x| x.ip)
         };
-        if let (Some(a), Some(b)) = (ip_of(l.a), ip_of(l.b)) {
-            if a.trunc() != b.trunc() {
-                w.push(format!(
-                    "câble {} ↔ {} : les deux extrémités sont dans des réseaux différents ({} et {})",
-                    end_name(sim, l.a),
-                    end_name(sim, l.b),
-                    a.trunc(),
-                    b.trunc()
-                ));
-            }
+        if let (Some(a), Some(b)) = (ip_of(l.a), ip_of(l.b))
+            && a.trunc() != b.trunc()
+        {
+            w.push(format!(
+                "câble {} ↔ {} : les deux extrémités sont dans des réseaux différents ({} et {})",
+                end_name(sim, l.a),
+                end_name(sim, l.b),
+                a.trunc(),
+                b.trunc()
+            ));
         }
     }
 
@@ -1089,13 +1090,14 @@ pub fn lint(sim: &Simulation) -> Vec<String> {
 
     // Pare-feu qui bloque tout.
     for d in sim.devices() {
-        if let Behavior::Ip(node) = &d.behavior {
-            if node.acl.default == AclAction::Deny && node.acl.rules.is_empty() {
-                w.push(format!(
-                    "{} : politique « deny » sans aucune règle : tout le trafic entrant est bloqué",
-                    d.name
-                ));
-            }
+        if let Behavior::Ip(node) = &d.behavior
+            && node.acl.default == AclAction::Deny
+            && node.acl.rules.is_empty()
+        {
+            w.push(format!(
+                "{} : politique « deny » sans aucune règle : tout le trafic entrant est bloqué",
+                d.name
+            ));
         }
     }
     w

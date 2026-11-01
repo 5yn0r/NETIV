@@ -28,24 +28,24 @@ pub(super) fn print_dhcp_report(
 ) -> io::Result<bool> {
     let mut any = false;
     for e in sim.trace().since(start) {
-        if let TraceKind::Dhcp { event, .. } = &e.kind {
-            if matches!(
+        if let TraceKind::Dhcp { event, .. } = &e.kind
+            && matches!(
                 event,
                 DhcpEvent::ClientBound(_)
                     | DhcpEvent::ClientFailed { .. }
                     | DhcpEvent::ClientReleased { .. }
-            ) {
-                any = true;
-                let tid = e
-                    .trace_id
-                    .map_or(String::new(), |t| format!("   [parcours {t}]"));
-                writeln!(
-                    out,
-                    "{} : {}{tid}",
-                    render::device_name(sim, e.device),
-                    render::describe(sim, e)
-                )?;
-            }
+            )
+        {
+            any = true;
+            let tid = e
+                .trace_id
+                .map_or(String::new(), |t| format!("   [parcours {t}]"));
+            writeln!(
+                out,
+                "{} : {}{tid}",
+                render::device_name(sim, e.device),
+                render::describe(sim, e)
+            )?;
         }
     }
     Ok(any)

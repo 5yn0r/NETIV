@@ -329,10 +329,12 @@ fn ios_show(
                 Behavior::Ip(n) => Some(n),
                 Behavior::Switch(_) => None,
             };
-            if let Some(n) = ip_node {
-                if d.kind != DeviceKind::Host && d.kind != DeviceKind::Server && !n.forwarding {
-                    let _ = writeln!(s, "no ip routing\n!");
-                }
+            if let Some(n) = ip_node
+                && d.kind != DeviceKind::Host
+                && d.kind != DeviceKind::Server
+                && !n.forwarding
+            {
+                let _ = writeln!(s, "no ip routing\n!");
             }
             for (idx, i) in d.ifaces.iter().enumerate() {
                 let _ = writeln!(s, "interface {}\n description NETIV {}", full(idx), i.name);
@@ -560,7 +562,7 @@ fn win(label: &str) -> String {
     let mut l = label.to_string();
     let mut col = l.chars().count();
     while col < 38 {
-        l.push(if col % 2 == 0 { ' ' } else { '.' });
+        l.push(if col.is_multiple_of(2) { ' ' } else { '.' });
         col += 1;
     }
     format!("   {l} : ")
@@ -625,10 +627,8 @@ fn host_show(sim: &Simulation, dev: DeviceId, show: &HostShow) -> Result<String,
                     win("Passerelle par défaut"),
                     gw.map(|g| g.to_string()).unwrap_or_default()
                 );
-                if *all {
-                    if let Some(dns) = n.effective_dns() {
-                        let _ = writeln!(s, "{}{dns}", win("Serveurs DNS"));
-                    }
+                if *all && let Some(dns) = n.effective_dns() {
+                    let _ = writeln!(s, "{}{dns}", win("Serveurs DNS"));
                 }
                 let _ = writeln!(s);
             }

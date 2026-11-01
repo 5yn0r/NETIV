@@ -71,10 +71,9 @@ impl PathInfo {
                         .device(e.device)
                         .and_then(|d| d.iface(*iface))
                         .and_then(|i| i.link)
+                        && seen_links.insert(l)
                     {
-                        if seen_links.insert(l) {
-                            info.links.push(l);
-                        }
+                        info.links.push(l);
                     }
                     if !is_switch(e.device) && seen_ifaces.insert((e.device, *iface)) {
                         info.ifaces.push((e.device, *iface));

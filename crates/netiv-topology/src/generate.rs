@@ -295,13 +295,13 @@ pub fn generate(spec: &GenSpec) -> Result<TopologyDef, String> {
             if j == src {
                 continue;
             }
-            if let (Some((num, _)), Some(hop)) = (rj.lan, first_hop[j]) {
-                if let Some(via) = next_ip(hop) {
-                    routes.push(RouteDef {
-                        dest: format!("10.{num}.0.0/24"),
-                        via: via.to_string(),
-                    });
-                }
+            if let (Some((num, _)), Some(hop)) = (rj.lan, first_hop[j])
+                && let Some(via) = next_ip(hop)
+            {
+                routes.push(RouteDef {
+                    dest: format!("10.{num}.0.0/24"),
+                    via: via.to_string(),
+                });
             }
         }
         // liaisons point-à-point non directement attachées
@@ -314,14 +314,14 @@ pub fn generate(spec: &GenSpec) -> Result<TopologyDef, String> {
             } else {
                 *b
             };
-            if let Some(hop) = first_hop[target] {
-                if let Some(via) = next_ip(hop) {
-                    let base = (k as u32) * 4;
-                    routes.push(RouteDef {
-                        dest: format!("172.16.{}.{}/30", base >> 8, base & 0xff),
-                        via: via.to_string(),
-                    });
-                }
+            if let Some(hop) = first_hop[target]
+                && let Some(via) = next_ip(hop)
+            {
+                let base = (k as u32) * 4;
+                routes.push(RouteDef {
+                    dest: format!("172.16.{}.{}/30", base >> 8, base & 0xff),
+                    via: via.to_string(),
+                });
             }
         }
         routers[src].routes = routes;

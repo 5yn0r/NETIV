@@ -621,11 +621,11 @@ impl Simulation {
                 // Une adresse fixée à la main : l'interface n'est plus cliente
                 // DHCP (sinon le prochain renouvellement effacerait la panne).
                 // L'état d'avant (DHCP compris) est restauré par l'annulation.
-                if ip.is_some() {
-                    if let Ok(node) = self.ip_cfg(*device) {
-                        node.dhcp_ifaces.remove(iface);
-                        node.dhcp_clients.remove(iface);
-                    }
+                if ip.is_some()
+                    && let Ok(node) = self.ip_cfg(*device)
+                {
+                    node.dhcp_ifaces.remove(iface);
+                    node.dhcp_clients.remove(iface);
                 }
             }
             Fault::SetGateway { device, gateway } => self.ip_cfg(*device)?.gateway = *gateway,

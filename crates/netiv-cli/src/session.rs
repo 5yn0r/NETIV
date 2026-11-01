@@ -304,10 +304,10 @@ impl Session {
     /// Relit le profil depuis le disque (plusieurs sessions peuvent partager
     /// le même profil).
     pub fn reload_profile(&mut self) {
-        if let Some(path) = &self.profile_path {
-            if let Ok(p) = load_profile(self.storage.as_ref(), path, &self.profile.name) {
-                self.profile = p;
-            }
+        if let Some(path) = &self.profile_path
+            && let Ok(p) = load_profile(self.storage.as_ref(), path, &self.profile.name)
+        {
+            self.profile = p;
         }
     }
 
@@ -1134,22 +1134,22 @@ impl Session {
     }
 
     fn cmd_diagnose(&mut self, args: &[&str], out: &mut dyn Write) -> Result<(), CliError> {
-        if let [dev, target, rest @ ..] = args {
-            if let Ok(netsvc::Target::Name(name)) = netsvc::parse_target(target) {
-                let src = self.device(dev)?;
-                let service = match rest {
-                    [] => None,
-                    [proto, port] => Some((parse_l4(proto)?, parse_port(port)?)),
-                    _ => return err("usage : diagnose <équipement> <ip|nom> [tcp|udp <port>]"),
-                };
-                let sim = self.sim()?;
-                let base = self.baseline_ref();
-                let d = netiv_diagnostics::diagnose_name(sim, base, src, &name, service)?;
-                write!(out, "{}", d.render(base.is_some(), true))?;
-                self.hint_level = 0;
-                self.last_cause = d.cause;
-                return Ok(());
-            }
+        if let [dev, target, rest @ ..] = args
+            && let Ok(netsvc::Target::Name(name)) = netsvc::parse_target(target)
+        {
+            let src = self.device(dev)?;
+            let service = match rest {
+                [] => None,
+                [proto, port] => Some((parse_l4(proto)?, parse_port(port)?)),
+                _ => return err("usage : diagnose <équipement> <ip|nom> [tcp|udp <port>]"),
+            };
+            let sim = self.sim()?;
+            let base = self.baseline_ref();
+            let d = netiv_diagnostics::diagnose_name(sim, base, src, &name, service)?;
+            write!(out, "{}", d.render(base.is_some(), true))?;
+            self.hint_level = 0;
+            self.last_cause = d.cause;
+            return Ok(());
         }
         let flow = if args.is_empty() {
             self.chaos.as_ref().map(|c| c.flow).ok_or_else(|| {
@@ -1545,10 +1545,10 @@ fn parse_num(s: &str) -> Result<u64, CliError> {
 /// Affiche la description du dernier événement de trace (confirmation d'une
 /// modification de configuration).
 fn last_event(sim: &Simulation, out: &mut dyn Write) -> Result<(), CliError> {
-    if let Some(e) = sim.trace().events().last() {
-        if let TraceKind::ConfigChanged { description } = &e.kind {
-            writeln!(out, "OK — {description}")?;
-        }
+    if let Some(e) = sim.trace().events().last()
+        && let TraceKind::ConfigChanged { description } = &e.kind
+    {
+        writeln!(out, "OK — {description}")?;
     }
     Ok(())
 }

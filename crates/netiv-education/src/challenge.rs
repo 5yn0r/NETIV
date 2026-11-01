@@ -50,10 +50,10 @@ pub fn objective_reached(
     probe: &Probe,
     dns_name: Option<&str>,
 ) -> Result<bool, NetivError> {
-    if let Some(name) = dns_name {
-        if resolve_in_copy(sim, probe.src, name).0 != DnsOutcome::Resolved(probe.dst) {
-            return Ok(false);
-        }
+    if let Some(name) = dns_name
+        && resolve_in_copy(sim, probe.src, name).0 != DnsOutcome::Resolved(probe.dst)
+    {
+        return Ok(false);
     }
     Ok(run_probe(sim, probe)?.success)
 }
