@@ -86,7 +86,7 @@ Son manque principal : tout pointe vers l'extérieur. Rien n'est pratiqué sur l
 - un moteur de simulation : ARP, ICMP, routage, switch avec VLAN, UDP, TCP minimal, HTTP simulé, pare-feu/ACL à état, DHCP (relais compris), DNS ;
 - des outils d'observation : `trace` (parcours d'un paquet), `inspect` (trame couche par couche), `explain` (justification des décisions) ;
 - 21 pannes réversibles, un diagnostic de cause racine, des indices à 4 niveaux ;
-- 18 défis notés (débutant, intermédiaire, avancé), XP, niveaux, badges, parcours, mode enseignant ;
+- 36 défis notés (débutant, intermédiaire, avancé), XP, niveaux, badges, parcours, mode enseignant ;
 - un analyseur de sécurité, de la forensique sur captures, 7 cyber ranges ;
 - un générateur de topologies et de défis, un « what-if », un score de santé ;
 - une API HTTP (axum) et une interface web en JavaScript natif, servies par `netiv serve`.
@@ -212,7 +212,7 @@ Son manque principal : tout pointe vers l'extérieur. Rien n'est pratiqué sur l
 - Export et import d'un lab (`.netiv`).
 
 **5.2 `/labs` et `/labs/[slug]`**
-- Catalogue des labs : les 18 défis de NETIV et les 3 cyber ranges, classés par niveau (débutant, intermédiaire, avancé) et par domaine (Réseau, Cybersécurité), avec les mêmes filtres que la page Ressources.
+- Catalogue des labs : les 36 défis de NETIV et les 7 cyber ranges, classés par niveau (débutant, intermédiaire, avancé) et par domaine (Réseau, Système, Cybersécurité, Support IT), avec les mêmes filtres que la page Ressources.
 - Page d'un lab : objectif, contexte, durée estimée, simulateur intégré, indices, soumission de la réponse, score détaillé (diagnostic, correction, temps, pénalité d'indices).
 - Pages indexables (titre, description, métadonnées) pour le référencement ; le simulateur lui-même se charge après.
 

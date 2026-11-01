@@ -2677,14 +2677,33 @@
 
   // ---- documentation (bouton « ? ») ; contenu dans help.js
 
-  const DOC = window.NETIV_HELP || null;
+  let DOC = null;
+  let docLoading = null;
 
-  function openHelp() {
+  /** Le contenu (help.js, ≈ 32 Ko) n'est téléchargé qu'à la première ouverture. */
+  function loadDoc() {
+    if (DOC) return Promise.resolve(DOC);
+    docLoading ??= new Promise((resolve, reject) => {
+      const tag = document.createElement('script');
+      tag.src = new URL('help.js', document.baseURI).href;
+      tag.onload = () => { DOC = window.NETIV_HELP || null; resolve(DOC); };
+      tag.onerror = () => { docLoading = null; reject(new Error('documentation indisponible')); };
+      document.head.append(tag);
+    });
+    return docLoading;
+  }
+
+  async function openHelp() {
     const dlg = $('#help-dialog');
     const search = $('#doc-search');
     search.value = '';
-    renderDoc('');
     if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+    if (!DOC) {
+      clear($('#doc-nav'));
+      clear($('#doc-body')).append(h('p', { class: 'muted' }, 'Chargement de la documentation…'));
+      try { await loadDoc(); } catch (_) { /* message ci-dessous */ }
+    }
+    renderDoc('');
     search.focus();
   }
 
