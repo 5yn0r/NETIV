@@ -32,6 +32,10 @@ Le script :
 | `catalog.json` | les 36 défis et 7 cyber ranges (titre, énoncé, thème, difficulté, durée, parcours et ticket de support), sans solutions |
 | `manifest.json` | version, taille et empreinte SHA-256 de chaque fichier, poids à télécharger |
 
+Les solutions des épreuves ne sont **pas** dans ce dossier. Le serveur d'une plateforme hôte
+(tuteur, explication après l'épreuve) les obtient à part, sans jamais les envoyer au navigateur :
+`cargo run -p netiv-wasm --example solutions > solutions.json`.
+
 La démo se sert avec n'importe quel serveur de fichiers statiques. Elle ne fait **aucune
 requête** en dehors de ces fichiers.
 
@@ -118,7 +122,7 @@ NETIV → page hôte (`source: 'netiv'`) :
 | `profile` | `profile` (JSON) | le profil a changé (tentative, leçon lue, épreuve réussie) |
 | `challenge-finished` | `kind`, `id`, `title`, `score`, `scoreDetail`, `hintsUsed`, `profile` | une épreuve vient d'être réussie |
 | `lab` | `requestId`, `id`, `text`, `error?` | réponse à `export-lab` |
-| `command` | `line`, `ok`, `error?`, `challenge?` (`kind`, `id`, `hintsUsed`, `answered`, `fixed`, `finished`) | une commande vient d'être exécutée (console ou boutons). Sert au journal d'usage de la plateforme hôte |
+| `command` | `line`, `ok`, `error?`, `output?` (1 500 caractères au plus), `challenge?` (`kind`, `id`, `hintsUsed`, `answered`, `fixed`, `finished`) | une commande vient d'être exécutée (console ou boutons). Sert au journal d'usage et au tuteur de la plateforme hôte |
 | `error` | `error` | le moteur n'a pas pu démarrer |
 
 **Disposition « lab »** (`layout: 'lab'`) : pour une épreuve imposée par la page hôte, le

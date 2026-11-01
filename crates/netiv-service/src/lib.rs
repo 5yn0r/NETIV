@@ -33,7 +33,7 @@ use netiv_topology::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub use catalog::{Catalog, CatalogEntry, catalog};
+pub use catalog::{Catalog, CatalogEntry, SolutionEntry, catalog, solutions};
 pub use request::Reply;
 
 /// Nombre maximal de labs ouverts en même temps.
