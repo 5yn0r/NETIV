@@ -101,7 +101,7 @@ COMMANDES
   Configurer
     ip <equip> <iface> <cidr|none|dhcp>   adresse IP
     gateway <equip> <ip|none>             passerelle
-    route add|del <equip> <cidr> [via <ip>]   route statique
+    route add <equip> <cidr> via <ip> | del <equip> <cidr>   route
     iface <equip> <iface> up|down         active / désactive
     cable <equip> <iface> cut|restore     coupe / rebranche
     loss <equip> <iface> <0..1>           taux de perte
@@ -109,7 +109,7 @@ COMMANDES
     forwarding <equip> on|off             routage
     arp <equip> static <ip> <mac> | del <ip>   ARP statique
     port <switch> <iface> access <vlan> | trunk [vlans] [native N]
-    service add|del <equip> tcp|udp <port> [nom]   service
+    service add <equip> tcp|udp <port> <nom> | del …   service
     acl add|insert|del|default|stateful <equip> …   filtrage
 
   DHCP et DNS

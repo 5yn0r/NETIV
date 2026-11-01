@@ -506,7 +506,6 @@
 
   function resetViews() {
     stopPlay();
-    state.helpText = null;
     state.journey = null;
     state.step = -1;
     state.tx = [];
@@ -2676,16 +2675,231 @@
     });
   }
 
-  async function openHelp() {
+  // ---- documentation (bouton « ? ») ; contenu dans help.js
+
+  const DOC = window.NETIV_HELP || null;
+
+  function openHelp() {
     const dlg = $('#help-dialog');
-    if (state.current && !state.helpText) {
-      try {
-        const r = await api('POST', `/api/labs/${state.current}/exec`, { line: 'help' });
-        state.helpText = (r.output || '').replace(/\n+$/, '');
-      } catch (_) { /* l'aide des raccourcis suffit */ }
-    }
-    if (state.helpText) $('#help-commands').textContent = state.helpText;
+    const search = $('#doc-search');
+    search.value = '';
+    renderDoc('');
     if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+    search.focus();
+  }
+
+  /** Équipements du lab ouvert pour les exemples (sinon des noms types). */
+  function docSamples() {
+    const devs = state.snap ? state.snap.devices : [];
+    const first = (...kinds) => kinds.map((k) => devs.find((d) => d.kind === k)).find(Boolean);
+    const host = first('host');
+    const server = devs.find((d) => d.kind === 'server' && d.ifaces.some((i) => i.ip)) || first('server');
+    const router = first('router', 'firewall');
+    const fw = first('firewall', 'router');
+    const sw = first('switch');
+    const ipOf = (d) => { const i = d && d.ifaces.find((x) => x.ip); return i ? i.ip.replace(/\/\d+$/, '') : null; };
+    const cidrOf = (d) => { const i = d && d.ifaces.find((x) => x.ip); return i ? i.ip : null; };
+    // Passerelle du poste : l'interface de routeur dans le même réseau.
+    const num = (ip) => ip.split('.').reduce((a, b) => a * 256 + +b, 0);
+    const sameNet = (a, b) => {
+      const [ip, len] = a.split('/');
+      const shift = 2 ** (32 - +len);
+      return Math.floor(num(ip) / shift) === Math.floor(num(b.split('/')[0]) / shift);
+    };
+    const hostCidr = cidrOf(host);
+    const gw = hostCidr && devs.filter((d) => d.kind === 'router' || d.kind === 'firewall')
+      .flatMap((d) => d.ifaces).find((i) => i.ip && sameNet(hostCidr, i.ip));
+    const ifaceOf = (d) => { const i = d && (d.ifaces.find((x) => x.ip) || d.ifaces[0]); return i ? i.name : null; };
+    return {
+      host: host ? host.name : 'PC1',
+      server: server ? server.name : 'SRV',
+      router: router ? router.name : 'R1',
+      fw: fw ? fw.name : 'FW1',
+      switch: sw ? sw.name : 'SW1',
+      serverIp: ipOf(server) || '192.168.2.10',
+      hostIp: hostCidr || '192.168.1.10/24',
+      hostGw: gw ? gw.ip.replace(/\/\d+$/, '') : '192.168.1.1',
+      hostIface: ifaceOf(host) || 'eth0',
+      routerIface: ifaceOf(router) || 'eth1',
+      switchPort: (sw && sw.ifaces[0] && sw.ifaces[0].name) || 'p1',
+    };
+  }
+
+  /** Syntaxe colorée : mots-clés, <paramètres>, [facultatif], a|b. */
+  function syntaxNodes(text) {
+    const out = [];
+    for (const tok of text.match(/\[[^\]]*\]|<[^>]*>|\s+|[^\s[<]+/g) || []) {
+      if (/^\s+$/.test(tok)) out.push(' ');
+      else if (tok.startsWith('[')) out.push(h('span', { class: 'syn-opt' }, '[', syntaxNodes(tok.slice(1, -1)), ']'));
+      else if (tok.startsWith('<')) out.push(h('span', { class: 'syn-par' }, tok));
+      else if (tok.includes('|')) out.push(h('span', { class: 'syn-alt' }, tok));
+      else out.push(h('b', { class: 'syn-kw' }, tok));
+    }
+    return out;
+  }
+
+  function kindChip(kind) {
+    const dev = DOC.devices.find((d) => d.kind === kind);
+    return h('span', { class: 'kind-chip' },
+      s('svg', { viewBox: '-14 -14 28 28', class: `pal-icon kind-${kind}`, 'aria-hidden': 'true' }, ...glyph(kind)),
+      dev ? dev.name : kind);
+  }
+
+  /** Met l'exemple dans la console, prêt à être modifié puis exécuté. */
+  function insertExample(line) {
+    $('#help-dialog').close();
+    if (state.ui.hideConsole) setUi({ hideConsole: false });
+    const input = $('#console-in');
+    input.value = line;
+    input.focus();
+    input.setSelectionRange(line.length, line.length);
+  }
+
+  /** Nom court d'une commande : « port access », « acl insert », « show vlan|mac ». */
+  function cmdLabel(c) {
+    const words = [];
+    const clean = c.syntax.split(' | ')[0].replace(/<[^>]*>|\[[^\]]*\]/g, ' ').split(/\s+/).filter((w) => w && !w.startsWith('|'));
+    for (const w of clean) {
+      if (words.length >= 3 || w === 'via' || (words.length >= 2 && w.includes('|'))) break;
+      words.push(w);
+    }
+    return words.join(' ');
+  }
+
+  const cmdId = (c) => `doc-${c.syntax.split(/\s+/).filter((w) => /^[a-z-]+$/.test(w)).slice(0, 3).join('-')}`;
+
+  function commandCard(c, sample) {
+    const fill = (t) => t.replace(/\{(\w+)\}/g, (m, k) => (k in sample ? sample[k] : m));
+    return h('article', { class: 'cmd-card', id: cmdId(c) },
+      h('code', { class: 'syn' }, syntaxNodes(c.syntax)),
+      h('p', null, c.summary),
+      c.params.length
+        ? h('dl', { class: 'cmd-params' }, c.params.flatMap(([n, d]) => [h('dt', null, syntaxNodes(n.includes('<') || n.includes('|') ? n : `<${n}>`)), h('dd', null, d)]))
+        : null,
+      h('div', { class: 'cmd-foot' },
+        h('div', { class: 'cmd-for' }, h('span', { class: 'muted' }, 'Pour :'),
+          c.devices.length === 5 ? h('span', { class: 'kind-chip all' }, 'tous les équipements') : c.devices.map(kindChip)),
+        h('div', { class: 'cmd-ex' }, c.examples.map((ex) => {
+          const line = fill(ex);
+          return h('button', { type: 'button', class: 'ex', title: 'Mettre dans la console', onclick: () => insertExample(line) },
+            h('code', null, line), h('span', { class: 'ins' }, 'Insérer'));
+        }))));
+  }
+
+  function renderDoc(query) {
+    const nav = clear($('#doc-nav'));
+    const body = clear($('#doc-body'));
+    if (!DOC) { body.append(h('p', { class: 'muted' }, 'Documentation indisponible.')); return; }
+    const sample = docSamples();
+    const q = query.trim().toLowerCase();
+    const sections = [];
+    const section = (id, title, ...kids) => {
+      sections.push([id, title]);
+      body.append(h('section', { class: 'doc-sec', id: `sec-${id}`, 'aria-labelledby': `sec-${id}-t` },
+        h('h3', { id: `sec-${id}-t` }, title), ...kids));
+    };
+
+    if (q) {
+      // Recherche : uniquement les commandes qui correspondent.
+      const hits = [];
+      for (const g of DOC.groups) {
+        for (const c of g.commands) {
+          const text = [c.syntax, c.summary, ...c.params.flat(), g.title].join(' ').toLowerCase();
+          if (q.split(/\s+/).every((w) => text.includes(w))) hits.push(c);
+        }
+      }
+      for (const [syn, where, what] of DOC.ios.commands) {
+        if (`${syn} ${what} cisco ios`.toLowerCase().includes(q)) hits.push({ ios: [syn, where, what] });
+      }
+      body.append(h('p', { class: 'muted doc-count' }, hits.length ? `${hits.length} résultat${hits.length > 1 ? 's' : ''} pour « ${query.trim()} »` : `Aucune commande pour « ${query.trim()} ».`));
+      for (const c of hits) {
+        body.append(c.ios
+          ? h('article', { class: 'cmd-card' }, h('code', { class: 'syn' }, syntaxNodes(c.ios[0])), h('p', null, c.ios[2]), h('p', { class: 'muted' }, `Console Cisco IOS, mode ${c.ios[1]}`))
+          : commandCard(c, sample));
+      }
+      nav.append(h('p', { class: 'muted' }, 'Effacez la recherche pour revenir au sommaire.'));
+      return;
+    }
+
+    // 1. Méthode.
+    section('methode', 'Résoudre un lab',
+      h('ol', { class: 'doc-steps' }, DOC.method.map(([t, d]) => h('li', null, h('b', null, t), h('span', null, d)))),
+      h('p', { class: 'muted' }, 'Barème : diagnostic juste +40, correction +40, rapidité jusqu’à +20, chaque indice −10.'));
+
+    // 2. Équipements, et les commandes propres à chacun.
+    const inLab = (kind) => (state.snap ? state.snap.devices.filter((d) => d.kind === kind).map((d) => d.name) : []);
+    section('equipements', 'Les équipements',
+      h('div', { class: 'dev-cards' }, DOC.devices.map((d) => {
+        const all = DOC.groups.flatMap((g) => g.commands);
+        const own = (d.keys || []).map((k) => all.find((c) => c.syntax.startsWith(k))).filter(Boolean);
+        const names = inLab(d.kind);
+        return h('article', { class: 'dev-card' },
+          h('header', null, s('svg', { viewBox: '-14 -14 28 28', class: `dev-icon kind-${d.kind}`, 'aria-hidden': 'true' }, ...glyph(d.kind)), h('h4', null, d.name)),
+          h('p', null, d.role),
+          h('p', { class: 'small' }, h('b', null, 'Se configure : '), d.config),
+          h('p', { class: 'small' }, h('b', null, 'Console : '), d.console),
+          names.length ? h('p', { class: 'small' }, h('b', null, 'Dans ce lab : '), names.join(', ')) : null,
+          own.length ? h('p', { class: 'small' }, h('b', null, 'Commandes clés :')) : null,
+          own.length ? h('div', { class: 'links' }, own.map((c) => h('a', { href: `#${cmdId(c)}`, onclick: (e) => { e.preventDefault(); jumpTo(cmdId(c)); } }, cmdLabel(c)))) : null);
+      })));
+
+    // 3. Commandes NETIV, par tâche.
+    for (const g of DOC.groups) {
+      section(g.id, g.title, g.intro ? h('p', { class: 'muted' }, g.intro) : null, g.commands.map((c) => commandCard(c, sample)));
+    }
+
+    // 4. Consoles.
+    section('ios', 'Console Cisco IOS',
+      h('p', { class: 'muted' }, DOC.ios.intro),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Invite', 'Mode', 'Pour', 'En sortir / avancer'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, DOC.ios.modes.map((r) => h('tr', null, r.map((x, i) => h('td', null, i === 0 || i === 3 ? h('code', null, x) : x)))))),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Commande', 'Mode', 'Rôle'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, DOC.ios.commands.map(([c, m, w]) => h('tr', null, h('td', null, h('code', { class: 'syn' }, syntaxNodes(c))), h('td', null, h('code', null, m)), h('td', null, w))))));
+    section('terminal', 'Terminal Windows / Linux',
+      h('p', { class: 'muted' }, DOC.host.intro),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Pour', 'Windows', 'Linux'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, DOC.host.rows.map(([t, w, l]) => h('tr', null, h('td', null, t), h('td', null, h('code', { class: 'syn' }, syntaxNodes(w))), h('td', null, h('code', { class: 'syn' }, syntaxNodes(l))))))));
+
+    // 5. Ce qu'on donne à « answer ».
+    const causes = state.library && state.library.causes ? state.library.causes : Object.keys(DOC.causeHints).map((slug) => ({ slug, label: '' }));
+    section('causes', 'Causes de panne (answer)',
+      h('p', { class: 'muted' }, 'À donner après l’équipement : « answer R1 missing-route ».'),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Cause', 'Signification', 'Comment la reconnaître'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, causes.map((c) => h('tr', null, h('td', null, h('code', null, c.slug)), h('td', null, c.label), h('td', { class: 'muted' }, DOC.causeHints[c.slug] || ''))))));
+    const behaviors = state.library && state.library.behaviors ? state.library.behaviors : Object.keys(DOC.behaviors);
+    section('comportements', 'Comportements (cyber range)',
+      h('p', { class: 'muted' }, 'À donner après la machine coupable : « answer WEB01 port-scan ».'),
+      h('table', { class: 'tbl doc-tbl' },
+        h('thead', null, h('tr', null, ['Comportement', 'Nom', 'Ce qu’on voit'].map((x) => h('th', { scope: 'col' }, x)))),
+        h('tbody', null, behaviors.map((b) => { const [n, d] = DOC.behaviors[b] || [b, '']; return h('tr', null, h('td', null, h('code', null, b)), h('td', null, n), h('td', { class: 'muted' }, d)); }))));
+
+    // 6. Lexique et raccourcis.
+    section('lexique', 'Lexique',
+      h('dl', { class: 'doc-gloss' }, DOC.glossary.flatMap(([t, d]) => [h('dt', null, t), h('dd', null, d)])));
+    section('raccourcis', 'Raccourcis clavier',
+      h('dl', { class: 'doc-gloss' }, DOC.shortcuts.flatMap(([k, d]) => [h('dt', null, k.split(/\s{2,}/).map((x) => h('kbd', null, x))), h('dd', null, d)])),
+      h('p', { class: 'muted' }, 'Schéma : molette = zoom, glisser = déplacer. Bord d’une zone : glisser pour redimensionner, double-clic = taille par défaut.'));
+
+    nav.append(
+      h('ul', null, sections.map(([id, title]) =>
+        h('li', null, h('a', { href: `#sec-${id}`, onclick: (e) => { e.preventDefault(); jumpTo(`sec-${id}`); } }, title)))),
+      // Sur téléphone : une liste déroulante à la place du sommaire.
+      h('select', { 'aria-label': 'Aller à la section', onchange: (e) => jumpTo(`sec-${e.target.value}`) },
+        sections.map(([id, title]) => h('option', { value: id }, title))));
+  }
+
+  /** Fait défiler la documentation jusqu'à un élément (sans toucher à l'URL). */
+  function jumpTo(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start', behavior: reducedMotion ? 'auto' : 'smooth' });
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
   }
 
   function initLayout() {
@@ -2713,6 +2927,7 @@
     $('#console-size').addEventListener('input', (e) => setUi({ consoleH: +e.target.value, hideConsole: false }));
     $('#layout-reset').addEventListener('click', () => { setUi({ ...UI_DEFAULTS }); fitView(); });
     $('#help-btn').addEventListener('click', openHelp);
+    $('#doc-search').addEventListener('input', (e) => renderDoc(e.target.value));
 
     // Le menu Affichage se ferme en cliquant ailleurs ou avec Échap.
     const menu = $('#view-menu');

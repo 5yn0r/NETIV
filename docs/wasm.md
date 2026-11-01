@@ -26,7 +26,7 @@ Le script :
 
 | Fichier | Rôle |
 |---|---|
-| `index.html`, `app.js`, `style.css`, `favicon.svg` | l'interface de `netiv serve`, inchangée (seul le chargement de `app.js` passe par `netiv-boot.js`) |
+| `index.html`, `app.js`, `help.js` (documentation du bouton « ? »), `style.css`, `favicon.svg` | l'interface de `netiv serve`, inchangée (seul le chargement de `app.js` passe par `netiv-boot.js`) |
 | `netiv-boot.js` | charge le module, crée le moteur, l'installe pour l'interface, dialogue avec la page hôte |
 | `netiv_wasm.js`, `netiv_wasm_bg.wasm`, `netiv_wasm.d.ts` | le moteur (wasm-bindgen) |
 | `catalog.json` | les 36 défis et 7 cyber ranges (titre, énoncé, thème, difficulté, durée, parcours et ticket de support), sans solutions |
@@ -44,7 +44,7 @@ Mesurée sur NETIV 0.4.0 (rustc 1.99, wasm-bindgen 0.2, binaryen 133) :
 | `.wasm` brut | 2 170 216 (2,07 Mo) |
 | `.wasm` gzip -9 | **773 680 (756 Ko)** |
 | `.wasm` brotli 11 | **575 852 (562 Ko)** |
-| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 832 278 (813 Ko) |
+| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 846 064 (826 Ko) |
 
 L'objectif (moins de 1,5 Mo compressé) est atteint sans retirer de module : sécurité,
 forensique, générateurs et cyber ranges sont tous présents. La CI échoue si le module compressé

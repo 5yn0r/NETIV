@@ -7,6 +7,7 @@
   <meta name="description" content="Laboratoire réseau interactif : construire, observer, casser, diagnostiquer, sécuriser.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
+  <script src="help.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -208,29 +209,16 @@
 
   <input id="file-import" type="file" accept=".netiv,.yaml,.yml,.json" hidden>
 
-  <dialog id="help-dialog" aria-labelledby="help-title">
-    <form method="dialog">
-      <h2 id="help-title">Aide</h2>
-      <h3>Raccourcis clavier</h3>
-      <dl class="help-grid">
-        <dt><kbd>[</kbd></dt><dd>afficher / masquer le catalogue</dd>
-        <dt><kbd>]</kbd></dt><dd>afficher / masquer le panneau de détails</dd>
-        <dt><kbd>`</kbd></dt><dd>afficher / masquer la console</dd>
-        <dt><kbd>F</kbd></dt><dd>schéma seul (plein cadre)</dd>
-        <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>zoomer, dézoomer, tout afficher</dd>
-        <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>espace</kbd></dt><dd>dans « Parcours » : étape précédente, suivante, lecture</dd>
-        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>dans la console : historique des commandes</dd>
-        <dt><kbd>B</kbd></dt><dd>mode Construire (dessiner, câbler, configurer)</dd>
-        <dt><kbd>C</kbd> <kbd>V</kbd></dt><dd>en mode Construire : outil Câble, outil Sélection</dd>
-        <dt><kbd>Suppr</kbd></dt><dd>supprimer l'équipement ou le câble sélectionné</dd>
-        <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>annuler / rétablir une modification</dd>
-        <dt><kbd>?</kbd></dt><dd>cette aide</dd>
-      </dl>
-      <p class="muted">Schéma : molette = zoom, glisser = déplacer. Bords des zones : glisser pour redimensionner, double-clic = taille par défaut.</p>
-      <h3>Commandes</h3>
-      <pre id="help-commands">Ouvre un lab pour afficher la liste des commandes.</pre>
-      <button class="primary" value="close">Fermer</button>
-    </form>
+  <dialog id="help-dialog" class="doc" aria-labelledby="help-title">
+    <div class="doc-head">
+      <h2 id="help-title">Documentation</h2>
+      <input id="doc-search" type="search" placeholder="Chercher : ping, vlan, passerelle, DNS…" aria-label="Chercher une commande" autocomplete="off" spellcheck="false">
+      <form method="dialog"><button class="icon-btn" value="close" aria-label="Fermer la documentation" title="Fermer  Échap"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></form>
+    </div>
+    <div class="doc-main">
+      <nav id="doc-nav" class="doc-nav" aria-label="Sections de la documentation"></nav>
+      <div id="doc-body" class="doc-body" tabindex="-1"></div>
+    </div>
   </dialog>
 
   <dialog id="profile-dialog" aria-labelledby="profile-title">

@@ -32,7 +32,7 @@ wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sig
 
 echo "==> Interface web"
 cp "$pkg/netiv_wasm.js" "$pkg/netiv_wasm.d.ts" "$out/"
-cp "$web/app.js" "$web/style.css" "$web/favicon.svg" "$here/web/netiv-boot.js" "$out/"
+cp "$web/app.js" "$web/help.js" "$web/style.css" "$web/favicon.svg" "$here/web/netiv-boot.js" "$out/"
 # Même page que `netiv serve` ; seul le démarrage change : le moteur
 # WebAssembly est chargé avant l'interface.
 grep -q '<script src="app.js" defer></script>' "$web/index.html" \
