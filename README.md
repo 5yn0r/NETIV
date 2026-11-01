@@ -5,12 +5,18 @@ Laboratoire réseau interactif en Rust : **construire, observer, casser, diagnos
 > Ne pas seulement montrer qu'un réseau fonctionne, mais comprendre *pourquoi* il fonctionne
 > et pourquoi il tombe en panne.
 
-Version **0.4** (phases 0 à 8, éditeur de réseau, DHCP et DNS) — Linux.
+Version **0.4** (phases 0 à 8, éditeur de réseau, DHCP et DNS, consoles Cisco IOS et Windows/Linux).
+Le simulateur de la plateforme [ITEtude](https://www.itetude.com), qui l'utilise en WebAssembly dans le navigateur.
 
 **Documentation : [docs/](docs/README.md)** — [guide utilisateur](docs/guide-utilisateur.md) ·
 [référence des commandes](docs/reference-commandes.md) · [format des topologies](docs/format-topologie.md) ·
 [API](docs/api.md) · [architecture](docs/architecture.md) · [performance](docs/performance.md).
 Conception : [cahier des charges](Cahier_de_charge.md) · [spécification d'architecture](SPEC_ARCHITECTURE.md).
+
+## Prérequis
+
+- Rust stable **1.89 ou plus récent** (version fixée par `rust-toolchain.toml`, édition 2024). Linux recommandé.
+- Pour la version navigateur : la cible `wasm32-unknown-unknown`, `wasm-pack` et `wasm-opt` (voir [docs/wasm.md](docs/wasm.md)).
 
 ## Essayer
 
@@ -83,7 +89,9 @@ Exemples : `examples/*.yaml` ; labs prêts à l'emploi dans `labs/*.netiv`.
 
 ![Interface web de NETIV](docs/img/interface.png)
 
-`netiv serve` démarre un serveur **local uniquement** (127.0.0.1) : schéma de la topologie,
+`netiv serve` démarre un serveur **local uniquement** (127.0.0.1) : schéma de la topologie, fiche de
+chaque équipement (interfaces, routes, VLAN, filtrage, services), documentation intégrée (`?` : commandes,
+paramètres, équipements, consoles, causes de panne, avec exemples tirés du lab ouvert),
 console, **Packet Journey animé** (◀ ▶ lecture), tables par équipement, trace filtrable,
 santé / sécurité / what-if / documentation, défis avec minuteur et indices.
 
@@ -109,6 +117,21 @@ lancent leurs sondes **en parallèle** sur des copies légères, sans jamais rec
 session. Exemple : 20 000 pings passent de 85 s à 0,45 s, un score de santé après une longue
 session de 15 s à 0,16 s. Détails et méthode : [docs/performance.md](docs/performance.md).
 
+### Intégration dans une plateforme (ITEtude)
+
+`crates/netiv-wasm/build-web.sh` produit un dossier statique autonome (moteur, interface, catalogue des épreuves) à
+servir dans une iframe de la même origine ; la page hôte dialogue avec le simulateur par messages (profil de l'élève,
+épreuve à ouvrir, score, commandes pour un tuteur). Les **solutions** des épreuves ne sont jamais dans ce dossier : le
+serveur de la plateforme les obtient à part (`cargo run -p netiv-wasm --example solutions`). Détails :
+[docs/wasm.md](docs/wasm.md) et [docs/INTEGRATION_ITETUDE.md](docs/INTEGRATION_ITETUDE.md).
+
+### Sécurité
+
+- Simulation **100 % logicielle** : aucune socket réelle, aucun accès fichier arbitraire depuis l'API.
+- YAML lu avec [serde-saphyr](https://crates.io/crates/serde-saphyr) (Rust sûr, protégé contre les documents piégés),
+  booléens stricts ; tailles d'entrée, nombre de labs et d'événements plafonnés.
+- Dépendances surveillées avec `cargo audit` (base RustSec) ; aucun secret dans le dépôt (`scripts/check-secrets.sh`).
+
 ### Hors périmètre (assumé)
 
 STP, TUI, export PDF natif (Markdown/JSON/YAML ; PDF via `pandoc`), comptes et
@@ -132,6 +155,8 @@ cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 UPDATE_GOLDEN=1 cargo test -p netiv-cli --test session    # régénère la sortie de référence
 cargo build --release && ./target/release/netiv bench    # mesures de performance
+cargo audit                                               # failles connues des dépendances (cargo install cargo-audit)
+bash scripts/check-secrets.sh                             # aucun secret dans le dépôt
 ```
 
 Conventions et organisation des tests : [docs/contribuer.md](docs/contribuer.md).
