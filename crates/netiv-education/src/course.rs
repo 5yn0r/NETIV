@@ -102,12 +102,12 @@ pub struct Grade {
 impl Course {
     /// Lit un cours YAML.
     pub fn from_yaml(text: &str) -> Result<Course, String> {
-        serde_yaml_ng::from_str(text).map_err(|e| format!("cours illisible : {e}"))
+        netiv_topology::yaml::from_str(text).map_err(|e| format!("cours illisible : {e}"))
     }
 
     /// Écrit le cours en YAML.
     pub fn to_yaml(&self) -> Result<String, String> {
-        serde_yaml_ng::to_string(self).map_err(|e| e.to_string())
+        netiv_topology::yaml::to_string(self).map_err(|e| e.to_string())
     }
 
     /// Cours d'exemple, point de départ pour un enseignant.

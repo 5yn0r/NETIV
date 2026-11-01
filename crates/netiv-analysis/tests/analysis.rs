@@ -481,7 +481,7 @@ fn json_and_yaml_documentation_parse_back_to_the_same_document() {
     let back: netiv_analysis::NetworkDoc = serde_json::from_str(&json).unwrap();
     assert_eq!(back, doc);
     let yaml = generate_docs(&sim, "mvp", DocFormat::Yaml).unwrap();
-    let back: netiv_analysis::NetworkDoc = serde_yaml_ng::from_str(&yaml).unwrap();
+    let back: netiv_analysis::NetworkDoc = netiv_topology::yaml::from_str(&yaml).unwrap();
     assert_eq!(back, doc);
     assert_eq!(doc.devices.len(), 5);
     assert_eq!(doc.links.len(), 4);

@@ -56,8 +56,8 @@ fn export_keeps_dhcp_and_dns_configuration_not_the_leases() {
         Some("10.10.2.10")
     );
     // Aller-retour YAML : même réseau, même configuration.
-    let yaml = serde_yaml_ng::to_string(&def).unwrap();
-    let back: TopologyDef = serde_yaml_ng::from_str(&yaml).unwrap();
+    let yaml = netiv_topology::yaml::to_string(&def).unwrap();
+    let back: TopologyDef = netiv_topology::yaml::from_str(&yaml).unwrap();
     assert_eq!(back, def);
     let rebuilt = build(&back).unwrap();
     assert_eq!(

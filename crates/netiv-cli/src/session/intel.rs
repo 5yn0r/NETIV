@@ -121,7 +121,7 @@ impl Session {
             seed,
         })
         .map_err(CliError)?;
-        let yaml = serde_yaml_ng::to_string(&def).map_err(|e| CliError(e.to_string()))?;
+        let yaml = netiv_topology::yaml::to_string(&def).map_err(|e| CliError(e.to_string()))?;
         if let Some(file) = opt(&opts, "--save") {
             self.write_text(file, &yaml)?;
             writeln!(out, "Topologie écrite dans {file}.")?;

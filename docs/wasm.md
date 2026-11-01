@@ -45,14 +45,19 @@ Mesurée sur NETIV 0.4.0 (rustc 1.99, wasm-bindgen 0.2, binaryen 133) :
 
 | | Octets |
 |---|---|
-| `.wasm` brut | 2 170 216 (2,07 Mo) |
-| `.wasm` gzip -9 | **773 680 (756 Ko)** |
-| `.wasm` brotli 11 | **575 852 (562 Ko)** |
-| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 846 064 (826 Ko) |
+| `.wasm` brut | 2 798 287 (2,67 Mo) |
+| `.wasm` gzip -9 | **922 428 (901 Ko)** |
+| `.wasm` brotli 11 | **655 322 (640 Ko)** |
+| Tout le dossier à télécharger (gzip : wasm + js + css + html) | 995 039 (972 Ko) |
 
 L'objectif (moins de 1,5 Mo compressé) est atteint sans retirer de module : sécurité,
 forensique, générateurs et cyber ranges sont tous présents. La CI échoue si le module compressé
 dépasse 1,5 Mo.
+
+Le moteur YAML ([serde-saphyr](https://crates.io/crates/serde-saphyr), écrit en Rust sûr et
+protégé contre les documents piégés) compte pour environ 150 Ko compressés : NETIV lit des YAML
+fournis par les élèves (topologies, fichiers `.netiv`, labs partagés), l'ancien moteur
+(`unsafe-libyaml`) n'était plus maintenu.
 
 ## API JavaScript
 

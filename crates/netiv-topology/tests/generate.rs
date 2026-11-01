@@ -164,10 +164,10 @@ fn addressing_plan_is_clean_and_unique() {
 
 #[test]
 fn generation_is_deterministic_and_the_seed_changes_the_placement_only() {
-    let a =
-        serde_yaml_ng::to_string(&generate(&spec(TopoKind::Enterprise, 4, 10)).unwrap()).unwrap();
-    let b =
-        serde_yaml_ng::to_string(&generate(&spec(TopoKind::Enterprise, 4, 10)).unwrap()).unwrap();
+    let a = netiv_topology::yaml::to_string(&generate(&spec(TopoKind::Enterprise, 4, 10)).unwrap())
+        .unwrap();
+    let b = netiv_topology::yaml::to_string(&generate(&spec(TopoKind::Enterprise, 4, 10)).unwrap())
+        .unwrap();
     assert_eq!(a, b);
     let distinct: std::collections::BTreeSet<String> = (0..6u64)
         .map(|seed| {

@@ -142,7 +142,6 @@ pub struct Challenge {
     /// Objectif.
     pub objective: Objective,
     /// Pannes injectées (cachées).
-    #[serde(with = "serde_yaml_ng::with::singleton_map_recursive")]
     pub faults: Vec<FaultSpec>,
     /// Solution.
     pub solution: Solution,
@@ -189,12 +188,12 @@ pub struct Built {
 impl Challenge {
     /// Lit un challenge YAML.
     pub fn from_yaml(text: &str) -> Result<Challenge, String> {
-        serde_yaml_ng::from_str(text).map_err(|e| format!("challenge illisible : {e}"))
+        netiv_topology::yaml::from_str(text).map_err(|e| format!("challenge illisible : {e}"))
     }
 
     /// Écrit le challenge en YAML.
     pub fn to_yaml(&self) -> Result<String, String> {
-        serde_yaml_ng::to_string(self).map_err(|e| e.to_string())
+        netiv_topology::yaml::to_string(self).map_err(|e| e.to_string())
     }
 
     /// Extrait le challenge d'un fichier `.netiv`.
@@ -203,7 +202,7 @@ impl Challenge {
             .challenge
             .clone()
             .ok_or("ce fichier .netiv ne contient pas de challenge")?;
-        let mut c: Challenge = serde_yaml_ng::from_value(value)
+        let mut c: Challenge = netiv_topology::yaml::from_value(&value)
             .map_err(|e| format!("challenge illisible dans le .netiv : {e}"))?;
         if c.topology.is_none() && c.topology_ref.is_none() {
             c.topology = Some(bundle.topology.clone());
@@ -226,7 +225,7 @@ impl Challenge {
             },
             topology,
         );
-        bundle.challenge = Some(serde_yaml_ng::to_value(&portable).map_err(|e| e.to_string())?);
+        bundle.challenge = Some(netiv_topology::yaml::to_value(&portable)?);
         Ok(bundle)
     }
 
@@ -241,7 +240,7 @@ impl Challenge {
                         crate::builtin::TOPOLOGY_NAMES.join(", ")
                     )
                 })?;
-                serde_yaml_ng::from_str(text)
+                netiv_topology::yaml::from_str(text)
                     .map_err(|e| format!("réseau « {name} » illisible : {e}"))
             }
             (Some(_), Some(_)) => {

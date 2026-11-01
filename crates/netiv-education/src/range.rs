@@ -85,7 +85,6 @@ pub struct RangeScenario {
     /// Réseau livré.
     pub topology_ref: String,
     /// Mauvaises configurations injectées (cachées).
-    #[serde(with = "serde_yaml_ng::with::singleton_map_recursive")]
     pub faults: Vec<FaultSpec>,
     /// Trafic scripté.
     pub traffic: Vec<TrafficStep>,
@@ -115,7 +114,7 @@ pub struct RangeBuilt {
 impl RangeScenario {
     /// Lit un scénario YAML.
     pub fn from_yaml(text: &str) -> Result<RangeScenario, String> {
-        serde_yaml_ng::from_str(text).map_err(|e| format!("scénario illisible : {e}"))
+        netiv_topology::yaml::from_str(text).map_err(|e| format!("scénario illisible : {e}"))
     }
 
     /// Construit le scénario : réseau sain → pannes cachées → incident rejoué.

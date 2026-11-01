@@ -19,7 +19,6 @@ netiv-security = { workspace = true }
 netiv-api = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
-serde_yaml_ng = { workspace = true }
 
 [lints]
 workspace = true

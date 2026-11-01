@@ -1379,8 +1379,8 @@ impl Service {
         match q.format.as_deref().unwrap_or("json") {
             "json" => Ok(TopologyView::Json { topology: def }),
             "yaml" => {
-                let text =
-                    serde_yaml_ng::to_string(&def).map_err(|e| ServiceError::bad(e.to_string()))?;
+                let text = netiv_topology::yaml::to_string(&def)
+                    .map_err(|e| ServiceError::bad(e.to_string()))?;
                 Ok(TopologyView::Text(FormattedText {
                     format: "yaml".to_string(),
                     text,

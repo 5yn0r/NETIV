@@ -365,6 +365,6 @@ pub fn generate_docs(sim: &Simulation, name: &str, format: DocFormat) -> Result<
     match format {
         DocFormat::Markdown => Ok(doc.to_markdown()),
         DocFormat::Json => serde_json::to_string_pretty(&doc).map_err(|e| e.to_string()),
-        DocFormat::Yaml => serde_yaml_ng::to_string(&doc).map_err(|e| e.to_string()),
+        DocFormat::Yaml => netiv_topology::yaml::to_string(&doc).map_err(|e| e.to_string()),
     }
 }
